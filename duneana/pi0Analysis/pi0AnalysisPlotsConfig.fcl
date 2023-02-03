@@ -1,0 +1,8 @@
+BEGIN_PROLOG
+
+pi0AnalysisPlots:
+{
+  module_type:		"Pi0AnalysisPlots"
+  TestFileName:        "nusample_100K_standard/pi0AnalysisOutput_nu_100K_standard.root"
+}
+END_PROLOG
