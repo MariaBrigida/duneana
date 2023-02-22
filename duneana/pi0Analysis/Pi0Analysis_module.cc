@@ -24,6 +24,7 @@
 #include "lardataobj/RecoBase/Hit.h"
 
 #include "larcore/Geometry/Geometry.h"
+#include "larcorealg/Geometry/TPCGeo.h"
 #include "art_root_io/TFileService.h"
 
 #include "dunereco/AnaUtils/DUNEAnaEventUtils.h"
@@ -76,11 +77,14 @@ public:
 private:
 
   TTree *fEventTree;
+  TTree *fGlobalTree;
 
   unsigned int fEventID;
   unsigned int fRunID;
   unsigned int fSubRunID;
   unsigned int fGlobalEventID;
+//  double fMinXCenter, fMaxXCenter, fMinYCenter, fMaxYCenter, fMinZCenter, fMaxZCenter;
+//  double fHalfWidth, fHalfLength, fHalfHeight;
 
   //MC particles vectors
   std::vector<int> fMCParticleNHits, fMCParticleNHitsU, fMCParticleNHitsV, fMCParticleNHitsW;
@@ -118,6 +122,7 @@ private:
   std::string fShowerLabel;
   std::string fPFParticleLabel;
   const geo::Geometry* fGeom;
+  //const geo::TPCGeo* fTPCGeom;
   bool fRollUpUnsavedIDs;
   long unsigned int fNMinimumShowerHits;
   double fMinimumShowerEnergy;
@@ -136,6 +141,7 @@ test::Pi0Analysis::Pi0Analysis(fhicl::ParameterSet const& p)
   fTrackLabel = p.get<std::string>("TrackLabel");
   fShowerLabel = p.get<std::string>("ShowerLabel");
   fGeom    = &*art::ServiceHandle<geo::Geometry>();
+ // fTPCGeom    = &*art::ServiceHandle<geo::TPCGeo>();
   fRollUpUnsavedIDs = p.get<bool>("RollUpUnsavedIDs"); 
   fNMinimumShowerHits = p.get<long unsigned int>("NMinimumShowerHits"); 
   fMinimumShowerEnergy = p.get<long unsigned int>("MinimumShowerEnergy"); 
@@ -145,6 +151,7 @@ test::Pi0Analysis::Pi0Analysis(fhicl::ParameterSet const& p)
 
 void test::Pi0Analysis::analyze(art::Event const& e)
 {
+
   ///////////////////Initialise/////////
   //Clear vectors
   test::Pi0Analysis::ClearAllVectors();
@@ -152,6 +159,7 @@ void test::Pi0Analysis::analyze(art::Event const& e)
   // Read event info
   fEventID = e.id().event();
   //std::cout << "fEventID = " << fEventID << std::endl;
+  //std::cout << "global event ID = " << fGlobalEventID << std::endl;
   //std::cout << "------------------------------------------------------" << std::endl;
   fRunID = e.id().run();
   fSubRunID = e.id().subRun();
@@ -160,10 +168,10 @@ void test::Pi0Analysis::analyze(art::Event const& e)
   //Fill vector of art::Ptr to access the PFParticles from Pandora
   const std::vector<art::Ptr<recob::PFParticle>> pfparticleVect = dune_ana::DUNEAnaEventUtils::GetPFParticles(e,fPFParticleLabel);
   fNPFParticles = pfparticleVect.size();
-  if(!fNPFParticles) {
-    //std::cout << "No PFParticles found!" << std::endl;
+  /*if(!fNPFParticles) {
+    std::cout << "No PFParticles found!" << std::endl;
     return;
-  }
+  }*/
   //
   if(!e.isRealData()) {
      //Get MC Particles
@@ -207,7 +215,7 @@ void test::Pi0Analysis::analyze(art::Event const& e)
       //Fill MC quantities such as best match true particle G4ID, purity, completeness 
       if (!e.isRealData()) {
         TruthMatchUtils::G4ID g4ID(TruthMatchUtils::TrueParticleIDFromTotalRecoHits(clockData,pfpShowerHits,fRollUpUnsavedIDs));
-        std::cout << "iPfp = " << iPfp << "/" << pfparticleVect.size() << "  shower TrueParticleIDFromTotalRecoHits = " << g4ID << std::endl;
+        //std::cout << "iPfp = " << iPfp << "/" << pfparticleVect.size() << "  shower TrueParticleIDFromTotalRecoHits = " << g4ID << " energy = " << shower->Energy().at(2) << std::endl;
 	//int pos(999999); for(unsigned int ipos=0; ipos<fNMCParticles; ipos++) {
 	//  if(fMCParticleTrackID[ipos]==g4ID){pos=ipos; /*std::cout << "found pos = " << pos << std::endl;*/} 
           //std::cout << "fMCParticleTrackID[ipos] = " << fMCParticleTrackID[ipos] << std::endl;
@@ -230,6 +238,7 @@ void test::Pi0Analysis::analyze(art::Event const& e)
             fPFPShowerCompleteness.push_back(comp);
             double purity = test::Pi0Analysis::GetPfpPurity(iShowerPfp);
             fPFPShowerPurity.push_back(purity);
+            //if(fGlobalEventID==4) std::cout << "DEBUG track ID = " << g4ID << " completeness = " << comp << std::endl;
         }
         else{
             fPFPShowerTrueParticleMatchedPosition.push_back(999999);
@@ -264,7 +273,7 @@ void test::Pi0Analysis::analyze(art::Event const& e)
     iPfp++;
   }
   fNShowerPFParticles=iShowerPfp;
-  std::cout << "DEBUG: fGlobalEventID = " << fGlobalEventID << " fPFPShowerTrueParticleMatchedPosition.size() = " << fPFPShowerTrueParticleMatchedPosition.size() << std::endl; 
+  //std::cout << "DEBUG: fGlobalEventID = " << fGlobalEventID << " fPFPShowerTrueParticleMatchedPosition.size() = " << fPFPShowerTrueParticleMatchedPosition.size() << std::endl; 
   fEventTree->Fill();
   fGlobalEventID++;
 }
@@ -277,6 +286,7 @@ void test::Pi0Analysis::beginJob()
   // Implementation of optional member function here.
   art::ServiceHandle<art::TFileService> tfs;
   fEventTree = tfs->make<TTree>("Event","Event Tree");
+  fGlobalTree = tfs->make<TTree>("Global","Global Tree");
   //fPi0Tree = tfs->make<TTree>("Pi0","Pi0 Tree");
 
   //Event tree
@@ -307,6 +317,10 @@ void test::Pi0Analysis::beginJob()
   fEventTree->Branch("mcParticleEndX",&fMCParticleEndX);
   fEventTree->Branch("mcParticleEndY",&fMCParticleEndY);
   fEventTree->Branch("mcParticleEndZ",&fMCParticleEndZ);
+  fEventTree->Branch("mcParticleNHits",&fMCParticleNHits);
+  fEventTree->Branch("mcParticleNHitsU",&fMCParticleNHitsU);
+  fEventTree->Branch("mcParticleNHitsV",&fMCParticleNHitsV);
+  fEventTree->Branch("mcParticleNHitsW",&fMCParticleNHitsW);
 
   fEventTree->Branch("nShowerPFParticles",&fNShowerPFParticles,"nShowerPFParticles/i");
   //fEventTree->Branch("pfpCompleteness",&fPFPCompleteness);
@@ -339,6 +353,40 @@ void test::Pi0Analysis::beginJob()
   fEventTree->Branch("nReconstructedPhotons",&fNReconstructedPhotons,"nReconstructedPhotons/i");
   fEventTree->Branch("nReconstructedPi0s",&fNReconstructedPi0s,"nReconstructedPi0s/i");
 
+/*  fGlobalTree->Branch("minXCenter",&fMinXCenter);
+  fGlobalTree->Branch("maxXCenter",&fMaxXCenter);
+  fGlobalTree->Branch("minYCenter",&fMinYCenter);
+  fGlobalTree->Branch("maxYCenter",&fMaxYCenter);
+  fGlobalTree->Branch("minZCenter",&fMinZCenter);
+  fGlobalTree->Branch("maxZCenter",&fMaxZCenter);
+  fGlobalTree->Branch("halfWidth",&fHalfWidth);
+  fGlobalTree->Branch("halfHeight",&fHalfHeight);
+  fGlobalTree->Branch("halfLength",&fHalfLength);
+*/
+  //Geometry test
+/*  int nTPCs(0); 
+  fMinXCenter = 999999; fMaxXCenter = -999999; fMinYCenter=999999; fMaxYCenter=-999999; fMinZCenter=999999; fMaxZCenter=-999999; fHalfWidth=0; fHalfLength=0; fHalfHeight=0;
+  for (geo::TPCID const& tpcid: fGeom->IterateTPCIDs()) {
+    const geo::TPCGeo& tpcgeo = fGeom->GetElement(tpcid);
+    std::cout << "geom center= " << tpcgeo.GetActiveVolumeCenter().X() << " " << tpcgeo.GetActiveVolumeCenter().Y() << " " << tpcgeo.GetActiveVolumeCenter().Z() << std::endl;
+    std::cout << "geome fHalf width (x) = " << tpcgeo.HalfWidth() << std::endl;
+    std::cout << "geome fHalf height (y) = " << tpcgeo.HalfHeight() << std::endl;
+    std::cout << "geome fHalf lentgh (z) = " << tpcgeo.HalfLength() << std::endl;
+    if(tpcgeo.GetActiveVolumeCenter().X()<fMinXCenter) fMinXCenter=tpcgeo.GetActiveVolumeCenter().X();
+    if(tpcgeo.GetActiveVolumeCenter().X()>fMaxXCenter) fMaxXCenter=tpcgeo.GetActiveVolumeCenter().X();
+    if(tpcgeo.GetActiveVolumeCenter().Y()<fMinYCenter) fMinYCenter=tpcgeo.GetActiveVolumeCenter().Y();
+    if(tpcgeo.GetActiveVolumeCenter().Y()>fMaxYCenter) fMaxYCenter=tpcgeo.GetActiveVolumeCenter().Y();
+    if(tpcgeo.GetActiveVolumeCenter().Z()<fMinZCenter) fMinZCenter=tpcgeo.GetActiveVolumeCenter().Z();
+    if(tpcgeo.GetActiveVolumeCenter().Z()>fMaxZCenter) fMaxZCenter=tpcgeo.GetActiveVolumeCenter().Z();
+    if(nTPCs==0){
+      fHalfWidth=tpcgeo.HalfWidth();
+      fHalfLength=tpcgeo.HalfLength();
+      fHalfHeight=tpcgeo.HalfHeight();
+    }
+    nTPCs++;
+  }
+  */
+  fGlobalTree->Fill();
 }
 
 void test::Pi0Analysis::endJob()
@@ -413,8 +461,8 @@ void test::Pi0Analysis::FillMcParticleVectors(){
         fMCParticlePdgCode.push_back(trueParticle.PdgCode());
         fMCParticleMass.push_back(trueParticle.Mass());
         fMCParticleEnergy.push_back(trueParticle.E());
-        //std::cout << "trueParticle.PdgCode() = " << trueParticle.PdgCode() << " trueParticle.E() = " << trueParticle.E() << std::endl;
-        if(trueParticle.PdgCode()==111) std::cout << "pi0! energy = " << trueParticle.E() << " global ev num = " << fGlobalEventID << " ev num = " << fEventID << " fRunID = " << fRunID << " fSubRunID = " << fSubRunID << std::endl;
+        //if(trueParticle.PdgCode()==22)std::cout << "iMC = " << iMc << " trueParticle.PdgCode() = " << trueParticle.PdgCode() << " trueParticle.E() = " << trueParticle.E() << std::endl;
+        //if(trueParticle.PdgCode()==111) std::cout << "pi0! energy = " << trueParticle.E() << " global ev num = " << fGlobalEventID << " ev num = " << fEventID << " fRunID = " << fRunID << " fSubRunID = " << fSubRunID << std::endl;
         fMCParticleStartMomentumX.push_back(trueParticle.Px());
         fMCParticleStartMomentumY.push_back(trueParticle.Py());
         fMCParticleStartMomentumZ.push_back(trueParticle.Pz());
@@ -437,7 +485,7 @@ void test::Pi0Analysis::FillMcParticleVectors(){
         }
         fMCParticleMotherPosition.push_back(motherPosition);
         fMCParticleMotherPdgCode.push_back(motherPdgCode);
-        if(trueParticle.PdgCode()==22 && fMCParticleMotherPdgCode.back()==111) std::cout <<"photon from pi! energy = " << trueParticle.E() << std::endl;
+        if(trueParticle.PdgCode()==22 && fMCParticleMotherPdgCode.back()==111) std::cout <<"photon from pi! energy = " << trueParticle.E() << " position = " << iMc << " trackID = " << trueParticle.TrackId() << std::endl;
         //std::cout << "pdg code = " << fMCParticlePdgCode.back() << " motherPosition = " << fMCParticleMotherPosition.back() << " mother pdg code = " << fMCParticleMotherPdgCode.back() << std::endl;
         //if(fMCParticleMotherPdgCode.back()==111)std::cout << "iMc = " << iMc << " pdg code = " << fMCParticlePdgCode.back() << " motherPosition = " << fMCParticleMotherPosition.back() << std::endl;
         //if(fMCParticleMotherPdgCode.back()==111) std::cout << "pdg: " << trueParticle.PdgCode() << " energy: " << trueParticle.E() << "mom: " << trueParticle.Px() << " " << trueParticle.Py() << " " << trueParticle.Pz() << std::endl;

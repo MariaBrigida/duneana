@@ -40,6 +40,15 @@
 #include <TH1D.h>
 #include <TLorentzVector.h>
 
+double xTolerance = 20;
+double yTolerance = 20;
+double zTolerance = 20;
+double lowBoundaryX;
+double lowBoundaryY;
+double lowBoundaryZ;
+double highBoundaryX;
+double highBoundaryY;
+double highBoundaryZ;
 
 namespace test {
   class Pi0AnalysisPlots;
@@ -65,7 +74,9 @@ public:
   void beginJob() override;
   void endJob() override;
 
-  bool PassesPhotonQualityCuts(int nHitsU, int nHitsV, int nHitsW, double energy, double purity, double completeness);
+  bool PassesTruePhotonQualityCuts(int nTrueHitsU, int nTrueHitsV, int nTrueHitsW, double trueEnergy, double trueVertexX, double trueVertexY, double trueVertexZ);
+  bool PassesTrueFiducialVolumeQualityCuts(double trueVertexX, double trueVertexY, double trueVertexZ);
+  bool PassesRecoShowerQualityCuts(/*int nSharedHits, */double purity, double completeness);
 
 private:
 
@@ -92,7 +103,8 @@ void test::Pi0AnalysisPlots::analyze(art::Event const& e)
 
 void test::Pi0AnalysisPlots::beginJob()
 {
-  
+  bool debugMode=0;
+  //std::cout << "Start analysis" << std::endl;
   art::ServiceHandle<art::TFileService> tfs;
   // Implementation of optional member function here.
   fTestTree = tfs->make<TTree>("Test","Test Tree");
@@ -101,8 +113,21 @@ void test::Pi0AnalysisPlots::beginJob()
   TH2D *hTrueVsRecoPhotonEnergy, *hTrueVsRecoPhotonMomentumX, *hTrueVsRecoPhotonMomentumY, *hTrueVsRecoPhotonMomentumZ, *hShowerCompletenessVsEnergyResolution, *hShowerPurityVsEnergyResolution, *hTrueVsRecoPhotonsOpeningAngle;
   TH2D *hShowerNHitsVsEnergyResolution, *hShowerNHitsVsCompleteness;
   TH2D *hTrueEnergyVsEnergyResolution, *hTrueEnergyVsCompleteness;
-  TH1I *hReconstructedPhotonsPerPi0, *hReconstructedPhotonsPerPi0_qualityCuts;
+  TH1I *hTruePhotonsPerPi0_trueQualityCuts, *hReconstructedPhotonsPerPi0_trueAndRecoQualityCuts;
+  //TH1I *hTruePi0s;
   TH1D *hEfficiency; 
+  TH2D *hPi0TruePhotonsOpeningAngleVsNTruePhotonsPassingTrueQualityCuts;
+  TH2D *hPi0TruePhotonsOpeningAngleVsNTruePhotonsPassingTrueAndRecoQualityCuts;
+  TH1D *hPi0TruePhotonsOpeningAngleEffi;
+  TH2D *hPi0TruePhotonsMinimumEnergyVsNTruePhotonsPassingTrueQualityCuts;
+  TH2D *hPi0TruePhotonsMinimumEnergyVsNTruePhotonsPassingTrueAndRecoQualityCuts;
+  TH1D *hPi0TruePhotonsMinimumEnergyEffi;
+  TH2D *hPi0TruePhotonsMinimumPurityVsNTruePhotonsPassingTrueQualityCuts;
+  TH2D *hPi0TruePhotonsMinimumPurityVsNTruePhotonsPassingTrueAndRecoQualityCuts;
+  TH1D *hPi0TruePhotonsMinimumPurityEffi;
+  TH2D *hPi0TruePhotonsMinimumCompletenessVsNTruePhotonsPassingTrueQualityCuts;
+  TH2D *hPi0TruePhotonsMinimumCompletenessVsNTruePhotonsPassingTrueAndRecoQualityCuts;
+  TH1D *hPi0TruePhotonsMinimumCompletenessEffi;
 
   hDebugTrackIDVsPfoMatchedID = tfs->make<TH2I>("hDebugTrackIDVsPfoMatchedID","hDebugTrackIDVsPfoMatchedID",1000,0,1000,1000,0,1000);
   hTruePi0InvMass = tfs->make<TH1D>("hTruePi0InvMass","hTruePi0InvMass",100,-0.05,0.45);
@@ -129,13 +154,25 @@ void test::Pi0AnalysisPlots::beginJob()
   hTrueVsRecoPhotonMomentumY = tfs->make<TH2D>("hTrueVsRecoPhotonMomentumY","hTrueVsRecoPhotonMomentumY",100,0,1,100,0,1);
   hTrueVsRecoPhotonMomentumZ = tfs->make<TH2D>("hTrueVsRecoPhotonMomentumZ","hTrueVsRecoPhotonMomentumZ",100,0,1,100,0,1);
   hEfficiency = tfs->make<TH1D>("hEfficiency","hEfficiency",1,0.,1.);
-  hReconstructedPhotonsPerPi0 = tfs->make<TH1I>("hReconstructedPhotonsPerPi0","hReconstructedPhotonsPerPi0",3,0,3);
-  hReconstructedPhotonsPerPi0_qualityCuts = tfs->make<TH1I>("hReconstructedPhotonsPerPi0_qualityCuts","hReconstructedPhotonsPerPi0_qualityCuts",3,0,3);
+  //hTruePi0s = tfs->make<TH1I>("hTruePi0s","hTruePi0s",1,0,1);
+  hTruePhotonsPerPi0_trueQualityCuts = tfs->make<TH1I>("hTruePhotonsPerPi0_trueQualityCuts","hTruePhotonsPerPi0_trueQualityCuts",3,0,3);
+  hReconstructedPhotonsPerPi0_trueAndRecoQualityCuts = tfs->make<TH1I>("hReconstructedPhotonsPerPi0_trueAndRecoQualityCuts","hReconstructedPhotonsPerPi0_trueAndRecoQualityCuts",3,0,3);
+  hPi0TruePhotonsOpeningAngleVsNTruePhotonsPassingTrueQualityCuts = tfs->make<TH2D>("hPi0TruePhotonsOpeningAngleVsNTruePhotonsPassingTrueQualityCuts","hPi0TruePhotonsOpeningAngleVsNTruePhotonsPassingTrueQualityCuts",45,0,180,3,0,3);
+  hPi0TruePhotonsOpeningAngleVsNTruePhotonsPassingTrueAndRecoQualityCuts = tfs->make<TH2D>("hPi0TruePhotonsOpeningAngleVsNTruePhotonsPassingTrueAndRecoQualityCuts","hPi0TruePhotonsOpeningAngleVsNTruePhotonsPassingTrueAndRecoQualityCuts",45,0,180,3,0,3);
+  hPi0TruePhotonsOpeningAngleEffi = tfs->make<TH1D>("hPi0TruePhotonsOpeningAngleEffi","hPi0TruePhotonsOpeningAngleEffi",45,0,180);
+  hPi0TruePhotonsMinimumEnergyVsNTruePhotonsPassingTrueQualityCuts = tfs->make<TH2D>("hPi0TruePhotonsMinimumEnergyVsNTruePhotonsPassingTrueQualityCuts","hPi0TruePhotonsMinimumEnergyVsNTruePhotonsPassingTrueQualityCuts",40,0,1,3,0,3);
+  hPi0TruePhotonsMinimumEnergyVsNTruePhotonsPassingTrueAndRecoQualityCuts = tfs->make<TH2D>("hPi0TruePhotonsMinimumEnergyVsNTruePhotonsPassingTrueAndRecoQualityCuts","hPi0TruePhotonsMinimumEnergyVsNTruePhotonsPassingTrueAndRecoQualityCuts",40,0,1,3,0,3);
+  hPi0TruePhotonsMinimumEnergyEffi = tfs->make<TH1D>("hPi0TruePhotonsMinimumEnergyEffi","hPi0TruePhotonsMinimumEnergyEffi",40,0,1);
+  hPi0TruePhotonsMinimumPurityVsNTruePhotonsPassingTrueQualityCuts = tfs->make<TH2D>("hPi0TruePhotonsMinimumPurityVsNTruePhotonsPassingTrueQualityCuts","hPi0TruePhotonsMinimumPurityVsNTruePhotonsPassingTrueQualityCuts",40,0,1,3,0,3);
+  hPi0TruePhotonsMinimumPurityVsNTruePhotonsPassingTrueAndRecoQualityCuts = tfs->make<TH2D>("hPi0TruePhotonsMinimumPurityVsNTruePhotonsPassingTrueAndRecoQualityCuts","hPi0TruePhotonsMinimumPurityVsNTruePhotonsPassingTrueAndRecoQualityCuts",40,0,1,3,0,3);
+  hPi0TruePhotonsMinimumPurityEffi = tfs->make<TH1D>("hPi0TruePhotonsMinimumPurityEffi","hPi0TruePhotonsMinimumPurityEffi",40,0,1);
+  hPi0TruePhotonsMinimumCompletenessVsNTruePhotonsPassingTrueQualityCuts = tfs->make<TH2D>("hPi0TruePhotonsMinimumCompletenessVsNTruePhotonsPassingTrueQualityCuts","hPi0TruePhotonsMinimumCompletenessVsNTruePhotonsPassingTrueQualityCuts",40,0,1,3,0,3);
+  hPi0TruePhotonsMinimumCompletenessVsNTruePhotonsPassingTrueAndRecoQualityCuts = tfs->make<TH2D>("hPi0TruePhotonsMinimumCompletenessVsNTruePhotonsPassingTrueAndRecoQualityCuts","hPi0TruePhotonsMinimumCompletenessVsNTruePhotonsPassingTrueAndRecoQualityCuts",40,0,1,3,0,3);
+  hPi0TruePhotonsMinimumCompletenessEffi = tfs->make<TH1D>("hPi0TruePhotonsMinimumCompletenessEffi","hPi0TruePhotonsMinimumCompletenessEffi",40,0,1);
+
 
   TTree *eventTree = (TTree*)fTestFile->Get("ana/Event");
-  //eventTree->Print();
-  //std::vector<double> *mcParticleVertexX = 0;
-  //TBranch *b_mcParticleVertexX;
+  //TTree *globalTree = (TTree*)fTestFile->Get("ana/Global");
   //tree->SetBranchAddress("mcParticleVertexX",&mcParticleVertexX, &b_mcParticleVertexX);
  
   unsigned int globalEventID = 0; 
@@ -150,6 +187,13 @@ void test::Pi0AnalysisPlots::beginJob()
   std::vector<double> *mcParticleStartMomentumY = 0;
   std::vector<double> *mcParticleStartMomentumZ = 0;
   std::vector<double> *mcParticleEnergy = 0;
+  std::vector<double> *mcParticleTrueVertexX = 0;
+  std::vector<double> *mcParticleTrueVertexY = 0;
+  std::vector<double> *mcParticleTrueVertexZ = 0;
+  std::vector<double> *mcParticleNHits = 0;
+  std::vector<double> *mcParticleNHitsU = 0;
+  std::vector<double> *mcParticleNHitsV = 0;
+  std::vector<double> *mcParticleNHitsW = 0;
 
   std::vector<double> *pfpShowerCollectionPlaneEnergy = 0;
   std::vector<double> *pfpShowerDirectionX = 0;
@@ -167,16 +211,29 @@ void test::Pi0AnalysisPlots::beginJob()
   std::vector<int> *pfpShowerTrueParticleNHitsW = 0;
   std::vector<int> *pfpShowerTrueParticleMatchedPosition = 0;
   std::vector<int> *pfpShowerTrueParticleMatchedId = 0;
-
+ 
+/*  double lowBoundaryXCenter = 0;
+  double highBoundaryXCenter = 0;
+  double lowBoundaryYCenter = 0;
+  double highBoundaryYCenter = 0;
+  double lowBoundaryZCenter = 0;
+  double highBoundaryZCenter = 0;
+  double halfWidth = 0;
+  double halfHeight = 0;
+  double halfLength = 0;
+*/
   
   //Define Event tree branches
   TBranch *b_globalEventID, *b_eventID, *b_runID, *b_subrunID;
   TBranch *b_mcParticleTrackID, *b_mcParticlePdgCode, *b_mcParticleMotherPdgCode, *b_mcParticleMotherPosition;
-  TBranch *b_mcParticleEnergy;
+  TBranch *b_mcParticleEnergy, *b_mcParticleTrueVertexX, *b_mcParticleTrueVertexY, *b_mcParticleTrueVertexZ;
+  TBranch *b_mcParticleNHits, *b_mcParticleNHitsU, *b_mcParticleNHitsV, *b_mcParticleNHitsW;
   TBranch *b_mcParticleStartMomentumX, *b_mcParticleStartMomentumY, *b_mcParticleStartMomentumZ;
   TBranch *b_pfpShowerCollectionPlaneEnergy, *b_pfpShowerDirectionX, *b_pfpShowerDirectionY, *b_pfpShowerDirectionZ, *b_pfpShowerTrueParticleMatchedPosition, *b_pfpShowerTrueParticleMatchedId, *b_pfpShowerCompleteness, *b_pfpShowerPurity, *b_pfpShowerNHits, *b_pfpShowerNHitsU, *b_pfpShowerNHitsV, *b_pfpShowerNHitsW;
   TBranch *b_pfpShowerTrueParticleNHits, *b_pfpShowerTrueParticleNHitsU, *b_pfpShowerTrueParticleNHitsV, *b_pfpShowerTrueParticleNHitsW;
+//  TBranch *b_halfWidth, *b_halfHeight, *b_halfLength, *b_lowBoundaryXCenter, *b_lowBoundaryYCenter, *b_lowBoundaryZCenter, *b_highBoundaryXCenter, *b_highBoundaryYCenter, *b_highBoundaryZCenter;
 
+  //std::cout << "Read branches" << std::endl;
   //Set Event tree branch addresses
   eventTree->SetBranchAddress("eventID",&eventID, &b_eventID);
   eventTree->SetBranchAddress("runID",&runID, &b_runID);
@@ -190,6 +247,13 @@ void test::Pi0AnalysisPlots::beginJob()
   eventTree->SetBranchAddress("mcParticleStartMomentumY",&mcParticleStartMomentumY, &b_mcParticleStartMomentumY);
   eventTree->SetBranchAddress("mcParticleStartMomentumZ",&mcParticleStartMomentumZ, &b_mcParticleStartMomentumZ);
   eventTree->SetBranchAddress("mcParticleEnergy",&mcParticleEnergy, &b_mcParticleEnergy);
+  eventTree->SetBranchAddress("mcParticleVertexX",&mcParticleTrueVertexX, &b_mcParticleTrueVertexX);
+  eventTree->SetBranchAddress("mcParticleVertexY",&mcParticleTrueVertexY, &b_mcParticleTrueVertexY);
+  eventTree->SetBranchAddress("mcParticleVertexZ",&mcParticleTrueVertexZ, &b_mcParticleTrueVertexZ);
+  eventTree->SetBranchAddress("mcParticleNHits",&mcParticleNHits, &b_mcParticleNHits);
+  eventTree->SetBranchAddress("mcParticleNHitsU",&mcParticleNHitsU, &b_mcParticleNHitsU);
+  eventTree->SetBranchAddress("mcParticleNHitsV",&mcParticleNHitsV, &b_mcParticleNHitsV);
+  eventTree->SetBranchAddress("mcParticleNHitsW",&mcParticleNHitsW, &b_mcParticleNHitsW);
 
   eventTree->SetBranchAddress("pfpShowerCollectionPlaneEnergy",&pfpShowerCollectionPlaneEnergy, &b_pfpShowerCollectionPlaneEnergy);
   eventTree->SetBranchAddress("pfpShowerDirectionX",&pfpShowerDirectionX, &b_pfpShowerDirectionX);
@@ -208,55 +272,97 @@ void test::Pi0AnalysisPlots::beginJob()
   eventTree->SetBranchAddress("pfpShowerTrueParticleNHitsV",&pfpShowerTrueParticleNHitsV, &b_pfpShowerTrueParticleNHitsV);
   eventTree->SetBranchAddress("pfpShowerTrueParticleNHitsW",&pfpShowerTrueParticleNHitsW, &b_pfpShowerTrueParticleNHitsW);
 
-  std::vector<int> pi0PhotonGlobalEventID, pi0PhotonMotherPos, pi0PhotonMatchedPfpShowerPos, pi0PhotonTrackId, pi0PhotonMatchedPfpShowerMatchedTrackID;
+  //Geometry
+/*  globalTree->SetBranchAddress("maxXCenter",&highBoundaryXCenter, &b_highBoundaryXCenter);
+  globalTree->SetBranchAddress("minXCenter",&lowBoundaryXCenter, &b_lowBoundaryXCenter);
+  globalTree->SetBranchAddress("maxYCenter",&highBoundaryYCenter, &b_highBoundaryYCenter);
+  globalTree->SetBranchAddress("minYCenter",&lowBoundaryYCenter, &b_lowBoundaryYCenter);
+  globalTree->SetBranchAddress("maxZCenter",&highBoundaryZCenter, &b_highBoundaryZCenter);
+  globalTree->SetBranchAddress("minZCenter",&lowBoundaryZCenter, &b_lowBoundaryZCenter);
+  globalTree->SetBranchAddress("halfWidth", &halfWidth, &b_halfWidth);
+  globalTree->SetBranchAddress("halfHeight", &halfHeight, &b_halfHeight);
+  globalTree->SetBranchAddress("halfLength", &halfLength, &b_halfLength);
+
+  globalTree->GetEntry(0);
+  lowBoundaryX = lowBoundaryXCenter - halfWidth + xTolerance;
+  highBoundaryX = highBoundaryXCenter + halfWidth - xTolerance;
+  lowBoundaryY = lowBoundaryYCenter - halfHeight + yTolerance;
+  highBoundaryY = highBoundaryYCenter + halfHeight - yTolerance;
+  lowBoundaryZ = lowBoundaryZCenter - halfLength + zTolerance;
+  highBoundaryZ = highBoundaryZCenter + halfLength - zTolerance;
+*/
+  /*std::cout << " lowBoundaryXCenter = " << lowBoundaryXCenter << " highBoundaryXCenter = " << highBoundaryXCenter << std::endl;
+  std::cout << " lowBoundaryYCenter = " << lowBoundaryYCenter << " highBoundaryYCenter = " << highBoundaryYCenter << std::endl;
+  std::cout << " lowBoundaryZCenter = " << lowBoundaryZCenter << " highBoundaryZCenter = " << highBoundaryZCenter << std::endl;
+
+  std::cout << " halfWidth = " << halfWidth << " halfHeight = " << halfHeight << " halfLength = " << halfLength << std::endl;
+
+  std::cout << " lowBoundaryX = " << lowBoundaryX << " highBoundaryX = " << highBoundaryX << std::endl;
+  std::cout << " lowBoundaryY = " << lowBoundaryY << " highBoundaryY = " << highBoundaryY << std::endl;
+  std::cout << " lowBoundaryZ = " << lowBoundaryZ << " highBoundaryZ = " << highBoundaryZ << std::endl;*/
+
+  std::vector<int> pi0PhotonGlobalEventID, pi0PhotonMotherPosInMCParticleVect, pi0PhotonMatchedPfpShowerPos, pi0PhotonTrackId, pi0PhotonMatchedPfpShowerMatchedTrackID,pi0PhotonMotherPosInPi0Vect;
   std::vector<int> pi0PhotonShowerNHits, pi0PhotonShowerNHitsU, pi0PhotonShowerNHitsV, pi0PhotonShowerNHitsW;
-  std::vector<int> pi0PhotonTrueParticleNHits, pi0PhotonTrueParticleNHitsU, pi0PhotonTrueParticleNHitsV, pi0PhotonTrueParticleNHitsW;
-  std::vector<double> pi0PhotonTrueEnergy, pi0PhotonTrueDirectionX, pi0PhotonTrueDirectionY, pi0PhotonTrueDirectionZ;
+  std::vector<int> pi0PhotonBestMatchedTrueParticleNHits, pi0PhotonBestMatchedTrueParticleNHitsU, pi0PhotonBestMatchedTrueParticleNHitsV, pi0PhotonBestMatchedTrueParticleNHitsW;
+  std::vector<double> pi0PhotonTrueEnergy, pi0PhotonTrueDirectionX, pi0PhotonTrueDirectionY, pi0PhotonTrueDirectionZ, pi0PhotonTrueVertexX, pi0PhotonTrueVertexY, pi0PhotonTrueVertexZ;
+  std::vector<int> pi0PhotonTrueNHits, pi0PhotonTrueNHitsU, pi0PhotonTrueNHitsV, pi0PhotonTrueNHitsW;
   std::vector<double> pi0PhotonMatchedPfpShowerCollectionPlaneEnergy, pi0PhotonMatchedPfpShowerDirectionX, pi0PhotonMatchedPfpShowerDirectionY, pi0PhotonMatchedPfpShowerDirectionZ, pi0PhotonShowerCompleteness, pi0PhotonShowerPurity;
 
 
   //Loop over eventTree entries
   int nTruePi0s(0);
+  int nTruePi0sInThisEvent(0);
   //std::vector<int> pi0TrackID;//vectors that save how many photons passing quality cuts are associated to each pi0
   std::vector<int> pi0GlobalEventNumber;
-  std::vector<int> pi0Pos;
-  std::vector<int> pi0NPhotons;
-  std::vector<int> pi0NPhotons_qualityCuts;
+  std::vector<int> pi0PosInMCParticleVector;
+  std::vector<int> pi0NPhotons_trueQualityCuts;;
+  std::vector<int> pi0NPhotons_trueAndRecoQualityCuts;
 
   //std::cout << "N Tree Entries = " << eventTree->GetEntries() << std::endl;
   //int nPhotons(0);
   for(int iEntry=0; iEntry<eventTree->GetEntries(); iEntry++){
-    //pi0Pos.clear();
-    //pi0NPhotons.clear();
-    //pi0NPhotons_qualityCuts.clear();
+    nTruePi0sInThisEvent=0;
+    //pi0PosInMCParticleVector.clear();
+    //pi0NPhotons_trueQualityCuts.clear();
+    //pi0NPhotons_trueAndRecoQualityCuts.clear();
     eventTree->GetEntry(iEntry);
-    //if(globalEventID>20000) break;
-    //std::cout << "global ev number = " <<  << std::endl;
+    //if(globalEventID!=314) continue;
+    if(debugMode)std::cout << "----------------------------------------> global ev number = " << globalEventID << "<----------------------------------------" << std::endl;
     //std::cout << "global event number = " << globalEventID << " event number = " <<eventID << " run number = " << runID << " subrun ID = " << subrunID << std::endl;
     //std::cout << " pfpShowerTrueParticleMatchedPosition->size() = " << pfpShowerTrueParticleMatchedPosition->size() << " mcParticleTrackID->size() = " << mcParticleTrackID->size() << std::endl;
     
     for(std::vector<int>::size_type iMCPart = 0; iMCPart<mcParticleTrackID->size(); iMCPart++){
       if(mcParticlePdgCode->at(iMCPart)==111) {
-        //std::cout << "iMCPart = " << iMCPart << " globalEventID = " << globalEventID << std::endl;
+        //std::cout << "Found a pi0! iMCPart = " << iMCPart << " globalEventID = " << globalEventID << std::endl;
         //hNTruePi0s->Fill(1);
         //pi0TrackID.push_back(mcParticleTrackID->at(iMCPart));
-        pi0Pos.push_back(iMCPart);
+        pi0PosInMCParticleVector.push_back(iMCPart);
         pi0GlobalEventNumber.push_back(globalEventID);
-        pi0NPhotons.push_back(0);
-        pi0NPhotons_qualityCuts.push_back(0);
+        pi0NPhotons_trueQualityCuts.push_back(0);
+        pi0NPhotons_trueAndRecoQualityCuts.push_back(0);
         nTruePi0s++;
-        //std::cout << " nr. pi0 = " << pi0NPhotons.size() << std::endl;
+	nTruePi0sInThisEvent++;
+        //std::cout << "true pi0 found at event " << globalEventID << std::endl;
+        //std::cout << " nr. pi0 = " << pi0NPhotons_trueQualityCuts.size() << std::endl;
       }
     }
 
     for(std::vector<int>::size_type iMCPart = 0; iMCPart<mcParticleTrackID->size(); iMCPart++){
       if(mcParticlePdgCode->at(iMCPart)==22 && mcParticleMotherPdgCode->at(iMCPart)==111){
-          pi0PhotonMotherPos.push_back(mcParticleMotherPosition->at(iMCPart));
+          pi0PhotonMotherPosInMCParticleVect.push_back(mcParticleMotherPosition->at(iMCPart));
           pi0PhotonGlobalEventID.push_back(globalEventID);
           pi0PhotonTrackId.push_back(mcParticleTrackID->at(iMCPart));
           //std::cout << "debug iMCPart = " << iMCPart << " mcParticleTrackID->size = " << mcParticleTrackID->size() << std::endl;
-          //std::cout << "debug iMCPart = " << iMCPart << std::endl;
+          //std::cout << "debug photon from pi0. iMCPart = " << iMCPart << std::endl;
           pi0PhotonTrueEnergy.push_back(mcParticleEnergy->at(iMCPart));
+          pi0PhotonTrueVertexX.push_back(mcParticleTrueVertexX->at(iMCPart));
+          pi0PhotonTrueVertexY.push_back(mcParticleTrueVertexY->at(iMCPart));
+          pi0PhotonTrueVertexZ.push_back(mcParticleTrueVertexZ->at(iMCPart));
+	  pi0PhotonTrueNHits.push_back(mcParticleNHits->at(iMCPart));
+	  pi0PhotonTrueNHitsU.push_back(mcParticleNHitsU->at(iMCPart));
+	  pi0PhotonTrueNHitsV.push_back(mcParticleNHitsV->at(iMCPart));
+	  pi0PhotonTrueNHitsW.push_back(mcParticleNHitsW->at(iMCPart));
+          if(debugMode)std::cout << "photon iMCPart = " << iMCPart << " true energy = " << mcParticleEnergy->at(iMCPart) << " track ID = " << mcParticleTrackID->at(iMCPart) << std::endl;
            //std::cout << "deb0" << std::endl;
           pi0PhotonTrueDirectionX.push_back(mcParticleStartMomentumX->at(iMCPart)); 
           // std::cout << "deb1" << std::endl;
@@ -267,7 +373,8 @@ void test::Pi0AnalysisPlots::beginJob()
           //std::cout << "pfpShowerTrueParticleMatchedPosition->size() = " << pfpShowerTrueParticleMatchedPosition->size() << std::endl;
           //std::cout << "pfpShowerTrueParticleMatchedId->size() = " << pfpShowerTrueParticleMatchedId->size() << std::endl;
           int nMatchedRecoShowers(0);
-          for(std::vector<int>::size_type iPfp=0; iPfp<pfpShowerTrueParticleMatchedPosition->size(); iPfp++){
+          for(std::vector<int>::size_type iPfp=0; iPfp<pfpShowerTrueParticleMatchedId->size(); iPfp++){
+            if(pfpShowerCollectionPlaneEnergy->at(iPfp)<0) continue; //Filter out Pfps where energy value is not good!
             //std::cout << " nMatchedRecoShowers = " << nMatchedRecoShowers << " pfpShowerTrueParticleMatchedId->at(iPfp) = " << pfpShowerTrueParticleMatchedId->at(iPfp) << " mcParticleTrackID->at(iMCPart) = " << mcParticleTrackID->at(iMCPart) << std::endl;
             if(nMatchedRecoShowers==0 && (pfpShowerTrueParticleMatchedId->at(iPfp)==mcParticleTrackID->at(iMCPart))) {
               //std::cout << "And it matched to pfp at position = " << iPfp << std::endl;
@@ -284,10 +391,11 @@ void test::Pi0AnalysisPlots::beginJob()
               pi0PhotonShowerNHitsU.push_back(pfpShowerNHitsU->at(iPfp));
               pi0PhotonShowerNHitsV.push_back(pfpShowerNHitsV->at(iPfp));
               pi0PhotonShowerNHitsW.push_back(pfpShowerNHitsW->at(iPfp));
-              pi0PhotonTrueParticleNHits.push_back(pfpShowerTrueParticleNHits->at(iPfp));
-              pi0PhotonTrueParticleNHitsU.push_back(pfpShowerTrueParticleNHitsU->at(iPfp));
-              pi0PhotonTrueParticleNHitsV.push_back(pfpShowerTrueParticleNHitsV->at(iPfp));
-              pi0PhotonTrueParticleNHitsW.push_back(pfpShowerTrueParticleNHitsW->at(iPfp));
+              pi0PhotonBestMatchedTrueParticleNHits.push_back(pfpShowerTrueParticleNHits->at(iPfp));
+              pi0PhotonBestMatchedTrueParticleNHitsU.push_back(pfpShowerTrueParticleNHitsU->at(iPfp));
+              pi0PhotonBestMatchedTrueParticleNHitsV.push_back(pfpShowerTrueParticleNHitsV->at(iPfp));
+              pi0PhotonBestMatchedTrueParticleNHitsW.push_back(pfpShowerTrueParticleNHitsW->at(iPfp));
+              //std::cout <<"iPfp = " << iPfp << " completeness = " << pfpShowerCompleteness->at(iPfp) << " reco energy = " << pfpShowerCollectionPlaneEnergy->at(iPfp) << " matched trackID = " << pfpShowerTrueParticleMatchedId->at(iPfp) << std::endl;
             }
             //If I already found a pfp matching to this MC particle, only replace if purity*completeness is higher
             else if(nMatchedRecoShowers==1 && (pfpShowerTrueParticleMatchedId->at(iPfp)==mcParticleTrackID->at(iMCPart))){
@@ -307,11 +415,11 @@ void test::Pi0AnalysisPlots::beginJob()
                 pi0PhotonShowerNHitsU.back()= pfpShowerNHitsU->at(iPfp);
                 pi0PhotonShowerNHitsW.back()= pfpShowerNHitsV->at(iPfp);
                 pi0PhotonShowerNHitsV.back()= pfpShowerNHitsW->at(iPfp);
-                pi0PhotonTrueParticleNHits.back() = pfpShowerTrueParticleNHits->at(iPfp);
-                pi0PhotonTrueParticleNHitsU.back() = pfpShowerTrueParticleNHitsU->at(iPfp);
-                pi0PhotonTrueParticleNHitsV.back() = pfpShowerTrueParticleNHitsV->at(iPfp);
-                pi0PhotonTrueParticleNHitsW.back() = pfpShowerTrueParticleNHitsW->at(iPfp);
-
+                pi0PhotonBestMatchedTrueParticleNHits.back() = pfpShowerTrueParticleNHits->at(iPfp);
+                pi0PhotonBestMatchedTrueParticleNHitsU.back() = pfpShowerTrueParticleNHitsU->at(iPfp);
+                pi0PhotonBestMatchedTrueParticleNHitsV.back() = pfpShowerTrueParticleNHitsV->at(iPfp);
+                pi0PhotonBestMatchedTrueParticleNHitsW.back() = pfpShowerTrueParticleNHitsW->at(iPfp);
+                //std::cout <<"REPLACING iPfp = " << iPfp << " completeness = " << pfpShowerCompleteness->at(iPfp) << " reco energy = " << pfpShowerCollectionPlaneEnergy->at(iPfp) << " matched trackID = " << pfpShowerTrueParticleMatchedId->at(iPfp) << std::endl;
               }
             }
           }
@@ -329,91 +437,97 @@ void test::Pi0AnalysisPlots::beginJob()
               pi0PhotonShowerNHitsU.push_back(-999);
               pi0PhotonShowerNHitsV.push_back(-999);
               pi0PhotonShowerNHitsW.push_back(-999);
-              pi0PhotonTrueParticleNHits.push_back(-999);
-              pi0PhotonTrueParticleNHitsU.push_back(-999);
-              pi0PhotonTrueParticleNHitsV.push_back(-999);
-              pi0PhotonTrueParticleNHitsW.push_back(-999);
+              pi0PhotonBestMatchedTrueParticleNHits.push_back(-999);
+              pi0PhotonBestMatchedTrueParticleNHitsU.push_back(-999);
+              pi0PhotonBestMatchedTrueParticleNHitsV.push_back(-999);
+              pi0PhotonBestMatchedTrueParticleNHitsW.push_back(-999);
           }
-          //std::cout << " photon index = " << pi0PhotonMotherPos.size() -1 << " pi0PhotonGlobalEventID = " << (int)pi0PhotonGlobalEventID.back() << " pi0PhotonTrueParticleNHitsU = " << pi0PhotonTrueParticleNHitsU.back() << " pi0PhotonMotherPos.size() = " << pi0PhotonMotherPos.size() << " pi0PhotonGlobalEventID.size() = " << (int)pi0PhotonGlobalEventID.size() << " pi0PhotonTrueParticleNHits.size() = " << pi0PhotonTrueParticleNHits.size() << std::endl;
-          //Fill pi0 Efficiency calculation vectors
-          /*if(((pi0PhotonMotherPos.size()-1)==118) || ((pi0PhotonMotherPos.size()-1)==119)){
-		std::cout << " I am looking for this mother position: " << pi0PhotonMotherPos.back() << " in the pi0 vectors. I will loop over them." << std::endl;
-          	for(std::vector<int>::size_type iPi0Vect=0; iPi0Vect<pi0Pos.size(); iPi0Vect++){
-            	std::cout << "iPi0Vect = " << iPi0Vect << " pi0Pos.at(iPi0Vect) = " << pi0Pos.at(iPi0Vect) << " pi0GlobalEventNumber.at(iPi0Vect) = " << pi0GlobalEventNumber.at(iPi0Vect) << std::endl;
-          	}
-          }*/
 
           //Find pi0 mother position
           int pi0ID(-999);
-          for(std::vector<int>::size_type iMotherPos=0; iMotherPos<pi0Pos.size(); iMotherPos++){
-            if(pi0Pos.at(iMotherPos)==pi0PhotonMotherPos.back() && pi0GlobalEventNumber.at(iMotherPos)==pi0PhotonGlobalEventID.back()) pi0ID=iMotherPos; 
+          for(std::vector<int>::size_type iMotherPos=0; iMotherPos<pi0PosInMCParticleVector.size(); iMotherPos++){
+            if(pi0PosInMCParticleVector.at(iMotherPos)==pi0PhotonMotherPosInMCParticleVect.back() && pi0GlobalEventNumber.at(iMotherPos)==pi0PhotonGlobalEventID.back()) {pi0ID=iMotherPos; if(debugMode) std::cout << "globalEventID = " << globalEventID << " photonID  = "<<  pi0PhotonTrueEnergy.size() << " energu = " << pi0PhotonTrueEnergy.back() << " mother pos in pi0 vect= " << pi0ID << std::endl;} 
           }
+	  pi0PhotonMotherPosInPi0Vect.push_back(pi0ID);
+	  //std::cout << "photon of energy = "<< pi0PhotonTrueEnergy.back() << "  at event = " << pi0PhotonGlobalEventID.back() << "passes MC cuts? " << PassesTruePhotonQualityCuts(pi0PhotonBestMatchedTrueParticleNHitsU.back(),pi0PhotonBestMatchedTrueParticleNHitsV.back(),pi0PhotonBestMatchedTrueParticleNHitsW.back(), pi0PhotonTrueEnergy.back()) << std::endl;
+	  if(debugMode)std::cout << " pi0ID = " << pi0ID << " passesTruePhotonQualityCuts = " << PassesTruePhotonQualityCuts(pi0PhotonTrueNHitsU.back(),pi0PhotonTrueNHitsV.back(),pi0PhotonTrueNHitsW.back(), pi0PhotonTrueEnergy.back(),pi0PhotonTrueVertexX.back(),pi0PhotonTrueVertexY.back(),pi0PhotonTrueVertexZ.back()) << " pi0PhotonTrueNHitsU.back() = " << pi0PhotonTrueNHitsU.back() << " pi0PhotonTrueNHitsV.back() = " << pi0PhotonTrueNHitsV.back() << " pi0PhotonTrueNHitsW.back() = " << pi0PhotonTrueNHitsW.back() << " pi0PhotonTrueEnergy.back() = " << pi0PhotonTrueEnergy.back() << " pi0PhotonTrueVertexX.back() = " << pi0PhotonTrueVertexX.back() << " pi0PhotonTrueVertexY.back() = " << pi0PhotonTrueVertexY.back() << " pi0PhotonTrueVertexZ.back() = " << pi0PhotonTrueVertexZ.back() << std::endl;
+          if(pi0ID>=0 && PassesTruePhotonQualityCuts(pi0PhotonTrueNHitsU.back(),pi0PhotonTrueNHitsV.back(),pi0PhotonTrueNHitsW.back(), pi0PhotonTrueEnergy.back(),pi0PhotonTrueVertexX.back(),pi0PhotonTrueVertexY.back(),pi0PhotonTrueVertexZ.back())){pi0NPhotons_trueQualityCuts.at(pi0ID)++;if(debugMode)std::cout << "globalEventID = " << globalEventID << " photonID passing true cuts = "<<  pi0PhotonTrueEnergy.size() << " energu = " << pi0PhotonTrueEnergy.back() << " mother pos in pi0 vect= " << pi0ID << std::endl;}
+          if(pi0ID>=0 && PassesTruePhotonQualityCuts(pi0PhotonTrueNHitsU.back(),pi0PhotonTrueNHitsV.back(),pi0PhotonTrueNHitsW.back(), pi0PhotonTrueEnergy.back(),pi0PhotonTrueVertexX.back(),pi0PhotonTrueVertexY.back(),pi0PhotonTrueVertexZ.back()) && PassesRecoShowerQualityCuts(pi0PhotonShowerPurity.back(),pi0PhotonShowerCompleteness.back())) {pi0NPhotons_trueAndRecoQualityCuts.at(pi0ID)++; if(debugMode)std::cout << "globalEventID = " << globalEventID << " photonID passing all cuts = "<<  pi0PhotonTrueEnergy.size() << " energu = " << pi0PhotonTrueEnergy.back() << " mother pos in pi0 vect= " << pi0ID << std::endl;}
+        }
+      }
 
-          //std::vector<int>::iterator it = std::find(pi0Pos.begin(), pi0Pos.end(), pi0PhotonMotherPos.back());
-          //int pi0ID = std::distance(pi0Pos.begin(), it);
-
-          //if(((pi0PhotonMotherPos.size()-1)==118) || ((pi0PhotonMotherPos.size()-1)==119))std::cout << " photon index = "  << pi0PhotonMotherPos.size()-1 << " pi0PhotonTrueParticleNHitsU " << pi0PhotonTrueParticleNHitsU.at(pi0PhotonMotherPos.size()-1) << " pi0PhotonTrueParticleNHitsV " << pi0PhotonTrueParticleNHitsV.at(pi0PhotonMotherPos.size()-1) << " pi0PhotonTrueParticleNHitsW " << pi0PhotonTrueParticleNHitsW.at(pi0PhotonMotherPos.size()-1) << " pi0PhotonTrueEnergy " << pi0PhotonTrueEnergy.at(pi0PhotonMotherPos.size()-1) << " pi0PhotonShowerPurity " << pi0PhotonShowerPurity.at(pi0PhotonMotherPos.size()-1) << " pi0PhotonShowerCompleteness " << pi0PhotonShowerCompleteness.at(pi0PhotonMotherPos.size()-1) << " Passes element cuts = " <<PassesPhotonQualityCuts(pi0PhotonTrueParticleNHitsU.back(),pi0PhotonTrueParticleNHitsV.back(),pi0PhotonTrueParticleNHitsW.back(), pi0PhotonTrueEnergy.back(),pi0PhotonShowerPurity.back(),pi0PhotonShowerCompleteness.back())<< " (int)pi0GlobalEventNumber.at(pi0ID) = " << (int)pi0GlobalEventNumber.at(pi0ID) << " (int)globalEventID = " << (int)globalEventID << std::endl;
-          //std::cout << "Pi0 daughter photon! iMCPart = " << iMCPart << " iPhoton = " << pi0PhotonTrueParticleNHitsU.size() - 1 << " pi0ID = " << pi0ID << " pi0GlobalEventNumber = " << (int)pi0GlobalEventNumber.at(pi0ID) << std::endl;
-          if(pi0ID>=0)pi0NPhotons.at(pi0ID)++;
-          if(pi0ID>=0 && PassesPhotonQualityCuts(pi0PhotonTrueParticleNHitsU.back(),pi0PhotonTrueParticleNHitsV.back(),pi0PhotonTrueParticleNHitsW.back(), pi0PhotonTrueEnergy.back(),pi0PhotonShowerPurity.back(),pi0PhotonShowerCompleteness.back())) {pi0NPhotons_qualityCuts.at(pi0ID)++;}
-            //std::cout << "iMCPart = "  << iMCPart << " iPhoton = " << pi0PhotonTrueParticleNHitsU.size() - 1 << " pi0PhotonTrueParticleNHitsU " << pi0PhotonTrueParticleNHitsU.back() << " pi0PhotonTrueParticleNHitsV " << pi0PhotonTrueParticleNHitsV.back() << " pi0PhotonTrueParticleNHitsW " << pi0PhotonTrueParticleNHitsW.back() << " pi0PhotonTrueEnergy " << pi0PhotonTrueEnergy.back() << " pi0PhotonShowerPurity " << pi0PhotonShowerPurity.back() << " pi0PhotonShowerCompleteness " << pi0PhotonShowerCompleteness.back() << std::endl;
-          //std::cout << "iMc = " << iMCPart << " pi0PhotonMotherPos= " << pi0PhotonMotherPos.back() << std::endl;
-          //std::cout << "debug: pi0PhotonMatchedPfpShowerMatchedTrackID = " << pi0PhotonMatchedPfpShowerMatchedTrackID.back() << " pi0PhotonTrackId = " << pi0PhotonTrackId.back() << std::endl;
-          //std::cout << "pi0PhotonGlobalEventID = " << pi0PhotonGlobalEventID.back() << " pi0PhotonTrueEnergy = " << pi0PhotonTrueEnergy.back() << std::endl;
-//     /*if(pi0PhotonShowerCompleteness.at(iPi0Phot)<0.9 || pi0PhotonShowerCompleteness.at(jPi0Phot)<0.9)*/std::cout << "iPhot = " << iPi0Phot << " jPhot = " << jPi0Phot << " global ev ID = " << pi0PhotonGlobalEventID.at(iPi0Phot) << " pi0PhotonShowerCompleteness.at(iPi0Phot) = " << pi0PhotonShowerCompleteness.at(iPi0Phot) << " pi0PhotonShowerCompleteness.at(jPi0Phot) = " << pi0PhotonShowerCompleteness.at(jPi0Phot) << " phot1 energy = " <<pi0PhotonMatchedPfpShowerCollectionPlaneEnergy.at(iPi0Phot)/1000 << " phot2 energy = " << pi0PhotonMatchedPfpShowerCollectionPlaneEnergy.at(jPi0Phot)/1000 << " true phot1 energy = " << pi0PhotonTrueEnergy.at(iPi0Phot) << " true phot2 energy = " << pi0PhotonTrueEnergy.at(jPi0Phot) << std::endl;
-        /*nPhotons++;
-        std::cout << "----------->DEBUG iPhoton = " << nPhotons << " event = " << globalEventID << " iMcParticle = " << iMCPart << std::endl;
-        std::cout << "pi0PhotonGlobalEventID size = " << pi0PhotonGlobalEventID.size() << " last element = " << pi0PhotonGlobalEventID.back() << std::endl;
-        std::cout << "pi0PhotonMotherPos size = " << pi0PhotonMotherPos.size() << " last element = " << pi0PhotonMotherPos.back() << std::endl;
-        std::cout << "pi0PhotonTrackID size = " << pi0PhotonTrackId.size() << " last element = " << pi0PhotonTrackId.back() << std::endl;
-        std::cout << "pi0PhotonTrueEnergy size = " << pi0PhotonTrueEnergy.size() << " last element = " << pi0PhotonTrueEnergy.back() << std::endl;
-        std::cout << "pi0PhotonTrueDirectionX size = " << pi0PhotonTrueDirectionX.size() << " last element = " << pi0PhotonTrueDirectionX.back() << std::endl;
-        std::cout << "pi0PhotonTrueDirectionY size = " << pi0PhotonTrueDirectionY.size() << " last element = " << pi0PhotonTrueDirectionY.back() << std::endl;
-        std::cout << "pi0PhotonTrueDirectionZ size = " << pi0PhotonTrueDirectionZ.size() << " last element = " << pi0PhotonTrueDirectionZ.back() << std::endl;
-        std::cout << "pi0PhotonMatchedPfpShowerPos size = " << pi0PhotonMatchedPfpShowerPos.size() << " last element = " << pi0PhotonMatchedPfpShowerPos.back() << std::endl;
-        std::cout << "pi0PhotonMatchedPfpShowerMatchedTrackID size = " << pi0PhotonMatchedPfpShowerMatchedTrackID.size() << " last element = " << pi0PhotonMatchedPfpShowerMatchedTrackID.back() << std::endl;
-        std::cout << "pi0PhotonMatchedPfpShowerCollectionPlaneEnergy size = " << pi0PhotonMatchedPfpShowerCollectionPlaneEnergy.size() << " last element = " << pi0PhotonMatchedPfpShowerCollectionPlaneEnergy.back() << std::endl;
-        std::cout << "pi0PhotonMatchedPfpShowerDirectionX size = " << pi0PhotonMatchedPfpShowerDirectionX.size() << " last element = " << pi0PhotonMatchedPfpShowerDirectionX.back() << std::endl;
-        std::cout << "pi0PhotonMatchedPfpShowerDirectionY size = " << pi0PhotonMatchedPfpShowerDirectionY.size() << " last element = " << pi0PhotonMatchedPfpShowerDirectionY.back() << std::endl;
-        std::cout << "pi0PhotonMatchedPfpShowerDirectionZ size = " << pi0PhotonMatchedPfpShowerDirectionZ.size() << " last element = " << pi0PhotonMatchedPfpShowerDirectionZ.back() << std::endl;
-        std::cout << "pi0PhotonShowerPurity size = " << pi0PhotonShowerPurity.size() << " last element = " << pi0PhotonShowerPurity.back() << std::endl;
-        std::cout << "pi0PhotonShowerCompleteness size = " << pi0PhotonShowerCompleteness.size() << " last element = " << pi0PhotonShowerCompleteness.back() << std::endl;
-        std::cout << "pi0PhotonShowerNHits size = " << pi0PhotonShowerNHits.size() << " last element = " << pi0PhotonShowerNHits.back() << std::endl;
-        std::cout << "pi0PhotonShowerNHitsU size = " << pi0PhotonShowerNHitsU.size() << " last element = " << pi0PhotonShowerNHitsU.back() << std::endl;
-        std::cout << "pi0PhotonShowerNHitsV size = " << pi0PhotonShowerNHitsV.size() << " last element = " << pi0PhotonShowerNHitsV.back() << std::endl;
-        std::cout << "pi0PhotonShowerNHitsW size = " << pi0PhotonShowerNHitsW.size() << " last element = " << pi0PhotonShowerNHitsW.back() << std::endl;
-        std::cout << "pi0PhotonTrueParticleNHits size = " << pi0PhotonTrueParticleNHits.size() << " last element = " << pi0PhotonTrueParticleNHits.back() << std::endl;
-        std::cout << "pi0PhotonTrueParticleNHitsU size = " << pi0PhotonTrueParticleNHitsU.size() << " last element = " << pi0PhotonTrueParticleNHitsU.back() << std::endl;
-        std::cout << "pi0PhotonTrueParticleNHitsV size = " << pi0PhotonTrueParticleNHitsV.size() << " last element = " << pi0PhotonTrueParticleNHitsV.back() << std::endl;
-        std::cout << "pi0PhotonTrueParticleNHitsW size = " << pi0PhotonTrueParticleNHitsW.size() << " last element = " << pi0PhotonTrueParticleNHitsW.back() << std::endl;*/
+      //IDENTIFY EVENTS FOR WHICH a specific pi0 has 0,1, or 2 reconstructed photons, for debugging purposes (making ev displays)
+      int nPhotonsPerPi0(0),nPhotonsPerPi0PassingTrueQualityCuts(0),nPhotonsPerPi0PassingTrueAndRecoQualityCuts(0), photon1IDPerPi0(-999), photon2IDPerPi0(-999);
+      if(debugMode)std::cout << "nTruePi0sInThisEvent = " << nTruePi0sInThisEvent << std::endl;
+      for(long unsigned int iPi0=(pi0PosInMCParticleVector.size()-nTruePi0sInThisEvent); iPi0<pi0PosInMCParticleVector.size(); iPi0++){
+        nPhotonsPerPi0=0;nPhotonsPerPi0PassingTrueQualityCuts=0;nPhotonsPerPi0PassingTrueAndRecoQualityCuts=0;
+        //Let's find the daughter photons associated to this pi0
+        for(long unsigned int iPi0Phot=0; iPi0Phot<pi0PhotonMotherPosInPi0Vect.size(); iPi0Phot++){
+          if(pi0GlobalEventNumber.at(iPi0)==pi0PhotonGlobalEventID.at(iPi0Phot) && debugMode)std::cout << " photonID = " << iPi0Phot << " energy = " << pi0PhotonTrueEnergy.at(iPi0Phot) << " mother pos in pi0 vect = " << pi0PhotonMotherPosInPi0Vect.at(iPi0Phot) << " pi0PosInMCParticleVector in pi0 vect = " << pi0PosInMCParticleVector.at(iPi0) << " pi0GlobalEventNumber.at(iPi0) = " << pi0GlobalEventNumber.at(iPi0) << " pi0PhotonGlobalEventID.at(iPi0Phot) = " << pi0PhotonGlobalEventID.at(iPi0Phot) << std::endl;
+	  if(pi0PhotonMotherPosInPi0Vect.at(iPi0Phot)<0)continue;
+          if((int)iPi0==pi0PhotonMotherPosInPi0Vect.at(iPi0Phot) && pi0GlobalEventNumber.at(iPi0)==pi0PhotonGlobalEventID.at(iPi0Phot)){
+            nPhotonsPerPi0++;
+            if(photon1IDPerPi0<0)photon1IDPerPi0=iPi0Phot;
+	    else photon2IDPerPi0=iPi0Phot;
+            if(PassesTruePhotonQualityCuts(pi0PhotonTrueNHitsU.at(iPi0Phot),pi0PhotonTrueNHitsV.at(iPi0Phot),pi0PhotonTrueNHitsW.at(iPi0Phot), pi0PhotonTrueEnergy.at(iPi0Phot),pi0PhotonTrueVertexX.at(iPi0Phot),pi0PhotonTrueVertexY.at(iPi0Phot),pi0PhotonTrueVertexZ.at(iPi0Phot)))nPhotonsPerPi0PassingTrueQualityCuts++;
+            if(PassesTruePhotonQualityCuts(pi0PhotonTrueNHitsU.at(iPi0Phot),pi0PhotonTrueNHitsV.at(iPi0Phot),pi0PhotonTrueNHitsW.at(iPi0Phot), pi0PhotonTrueEnergy.at(iPi0Phot),pi0PhotonTrueVertexX.at(iPi0Phot),pi0PhotonTrueVertexY.at(iPi0Phot),pi0PhotonTrueVertexZ.at(iPi0Phot)) && PassesRecoShowerQualityCuts(pi0PhotonShowerPurity.at(iPi0Phot),pi0PhotonShowerCompleteness.at(iPi0Phot)))nPhotonsPerPi0PassingTrueAndRecoQualityCuts++;
+            if(debugMode)std::cout << "iPi0 = " << iPi0 << " iPi0Phit = " << iPi0Phot << " true photon energy = " << pi0PhotonTrueEnergy.at(iPi0Phot) << std::endl;
+          }
+        }
+        if(nPhotonsPerPi0==0 && debugMode)std::cout << "DIAGNOSTICS: pi0 at pos = " << iPi0 << " in entry = " << iEntry << " NOT RECONSTRUCTED" << std::endl; 
+        else if(nPhotonsPerPi0==1 && debugMode)std::cout << "DIAGNOSTICS: pi0 at pos = " << iPi0 << " in entry = " << iEntry << " ONLY 1 RECONSTRUCTED PHOTON" << std::endl;
+        else if(nPhotonsPerPi0==2 && debugMode)std::cout << "DIAGNOSTICS: pi0 at pos = " << iPi0 << " in entry = " << iEntry << " BOTH PHOTONS RECONSTRUCTED!!!" << std::endl;
+        if(nPhotonsPerPi0PassingTrueQualityCuts==0 && debugMode)std::cout << "DIAGNOSTICS: pi0 at pos = " << iPi0 << " in entry = " << iEntry << " HAS NO PHOTON PASSING TRUE QUALITY CUTS" << std::endl; 
+        if(nPhotonsPerPi0PassingTrueQualityCuts==1 && debugMode)std::cout << "DIAGNOSTICS: pi0 at pos = " << iPi0 << " in entry = " << iEntry << " HAS ONLY 1 PHOTON PASSING TRUE QUALITY CUTS" << std::endl; 
+        if(nPhotonsPerPi0PassingTrueQualityCuts==2 && debugMode)std::cout << "DIAGNOSTICS: pi0 at pos = " << iPi0 << " in entry = " << iEntry << " BOTH PHOTONS PASS TRUE QUALITY CUTS!!!" << std::endl; 
+        if(nPhotonsPerPi0PassingTrueAndRecoQualityCuts==0 && debugMode)std::cout << "DIAGNOSTICS: pi0 at pos = " << iPi0 << " in entry = " << iEntry << " HAS NO PHOTON PASSING TRUE AND RECO QUALITY CUTS" << std::endl; 
+        if(nPhotonsPerPi0PassingTrueAndRecoQualityCuts==1 && debugMode)std::cout << "DIAGNOSTICS: pi0 at pos = " << iPi0 << " in entry = " << iEntry << " HAS ONLY 1 PHOTON PASSING TRUE AND RECO QUALITY CUTS" << std::endl; 
+        if(nPhotonsPerPi0PassingTrueAndRecoQualityCuts==2 && debugMode)std::cout << "DIAGNOSTICS: pi0 at pos = " << iPi0 << " in entry = " << iEntry << " BOTH PHOTONS PASS TRUE AND RECO QUALITY CUTS!!!" << std::endl;
+        //std::cout << "DEBUG photon1IDPerPi0 = " << photon1IDPerPi0 << " photon2IDPerPi0 = " << photon2IDPerPi0 << std::endl;
+	if(photon1IDPerPi0>0 && photon2IDPerPi0>0){ //I think the only case in which this won't work is the Dalitz case
+          TVector3 photon1trueDir(pi0PhotonTrueDirectionX.at(photon1IDPerPi0),pi0PhotonTrueDirectionY.at(photon1IDPerPi0),pi0PhotonTrueDirectionZ.at(photon1IDPerPi0));
+	  TVector3 photon2trueDir(pi0PhotonTrueDirectionX.at(photon2IDPerPi0),pi0PhotonTrueDirectionY.at(photon2IDPerPi0),pi0PhotonTrueDirectionZ.at(photon2IDPerPi0));
+          double pi0PhotonsTrueAngle=photon1trueDir.Angle(photon2trueDir)*180/TMath::Pi();
+          double minimumPhotonEnergy=TMath::Min(pi0PhotonTrueEnergy.at(photon1IDPerPi0),pi0PhotonTrueEnergy.at(photon2IDPerPi0));
+          double minimumPhotonPurity=TMath::Min(pi0PhotonShowerPurity.at(photon1IDPerPi0),pi0PhotonShowerPurity.at(photon2IDPerPi0));
+          double minimumPhotonCompleteness=TMath::Min(pi0PhotonShowerCompleteness.at(photon1IDPerPi0),pi0PhotonShowerCompleteness.at(photon2IDPerPi0));
+          //if(PassesTruePhotonQualityCuts(pi0PhotonBestMatchedTrueParticleNHitsU.at(photon1IDPerPi0),pi0PhotonBestMatchedTrueParticleNHitsV.at(photon1IDPerPi0),pi0PhotonBestMatchedTrueParticleNHitsW.at(photon1IDPerPi0), pi0PhotonTrueEnergy.at(photon1IDPerPi0),pi0PhotonTrueVertexX.at(photon1IDPerPi0),pi0PhotonTrueVertexY.at(photon1IDPerPi0),pi0PhotonTrueVertexZ.at(photon1IDPerPi0)) && PassesTruePhotonQualityCuts(pi0PhotonBestMatchedTrueParticleNHitsU.at(photon2IDPerPi0),pi0PhotonBestMatchedTrueParticleNHitsV.at(photon2IDPerPi0),pi0PhotonBestMatchedTrueParticleNHitsW.at(photon2IDPerPi0), pi0PhotonTrueEnergy.at(photon2IDPerPi0),pi0PhotonTrueVertexX.at(photon2IDPerPi0),pi0PhotonTrueVertexY.at(photon2IDPerPi0),pi0PhotonTrueVertexZ.at(photon2IDPerPi0)) && minimumPhotonEnergy>0.6) std::cout << "high energy photons!! event number = " << pi0GlobalEventNumber.at(iPi0) << std::endl; 
+          hPi0TruePhotonsOpeningAngleVsNTruePhotonsPassingTrueQualityCuts->Fill(pi0PhotonsTrueAngle,nPhotonsPerPi0PassingTrueQualityCuts);   
+          hPi0TruePhotonsOpeningAngleVsNTruePhotonsPassingTrueAndRecoQualityCuts->Fill(pi0PhotonsTrueAngle,nPhotonsPerPi0PassingTrueAndRecoQualityCuts);  
+	  hPi0TruePhotonsMinimumEnergyVsNTruePhotonsPassingTrueQualityCuts->Fill(minimumPhotonEnergy,nPhotonsPerPi0PassingTrueQualityCuts);
+	  hPi0TruePhotonsMinimumEnergyVsNTruePhotonsPassingTrueAndRecoQualityCuts->Fill(minimumPhotonEnergy,nPhotonsPerPi0PassingTrueAndRecoQualityCuts);
+	  hPi0TruePhotonsMinimumPurityVsNTruePhotonsPassingTrueQualityCuts->Fill(minimumPhotonPurity,nPhotonsPerPi0PassingTrueQualityCuts);
+	  hPi0TruePhotonsMinimumPurityVsNTruePhotonsPassingTrueAndRecoQualityCuts->Fill(minimumPhotonPurity,nPhotonsPerPi0PassingTrueAndRecoQualityCuts);
+	  hPi0TruePhotonsMinimumCompletenessVsNTruePhotonsPassingTrueQualityCuts->Fill(minimumPhotonCompleteness,nPhotonsPerPi0PassingTrueQualityCuts);
+	  hPi0TruePhotonsMinimumCompletenessVsNTruePhotonsPassingTrueAndRecoQualityCuts->Fill(minimumPhotonCompleteness,nPhotonsPerPi0PassingTrueAndRecoQualityCuts);
 
         }
       }
-      //int nPhot(0); for(long unsigned int iPi0=0; iPi0<pi0NPhotons.size(); iPi0++){nPhot+=pi0NPhotons.at(iPi0);}
-      //for(long unsigned int iPi0=0; iPi0<pi0NPhotons.size(); iPi0++){
-        //std::cout << "debug: iPi0 = " << iPi0 << " pi0NPhotons = " << pi0NPhotons.at(iPi0) << std::endl;
-      //}
-      //std::cout << " nr photons = " << nPhot << " size of photon array = " << pi0PhotonMatchedPfpShowerPos.size() << std::endl;
-      
     }
-  //std::cout << "pi0PhotonMotherPos size = " << pi0PhotonMotherPos.size() << std::endl;
-  int nPi0_noPhot = std::count_if(pi0NPhotons.begin(), pi0NPhotons.end(), [](int i){return i == 0;}); 
-  int nPi0_onePhot = std::count_if(pi0NPhotons.begin(), pi0NPhotons.end(), [](int i){return i == 1;}); 
-  int nPi0_twoPhot = std::count_if(pi0NPhotons.begin(), pi0NPhotons.end(), [](int i){return i == 2;}); 
-  int nPi0_noPhot_qualityCuts = std::count_if(pi0NPhotons_qualityCuts.begin(), pi0NPhotons_qualityCuts.end(), [](int i){return i == 0;}); 
-  int nPi0_onePhot_qualityCuts = std::count_if(pi0NPhotons_qualityCuts.begin(), pi0NPhotons_qualityCuts.end(), [](int i){return i == 1;}); 
-  int nPi0_twoPhot_qualityCuts = std::count_if(pi0NPhotons_qualityCuts.begin(), pi0NPhotons_qualityCuts.end(), [](int i){return i == 2;}); 
 
-  //std::cout << "N true pi0s = " << pi0NPhotons.size() << " nr pi0s with zero/one/two reco photon = " << nPi0_noPhot << " / " << nPi0_onePhot << " / " << nPi0_twoPhot << std::endl;
-  //std::cout << "N true pi0s = " << pi0NPhotons.size() << " nr pi0s with zero/one/two reco photons with quality cuts = " << nPi0_noPhot_qualityCuts << " / " << nPi0_onePhot_qualityCuts << " / " << nPi0_twoPhot_qualityCuts << std::endl;
-  hReconstructedPhotonsPerPi0->SetBinContent(1,nPi0_noPhot);
-  hReconstructedPhotonsPerPi0->SetBinContent(2,nPi0_onePhot);
-  hReconstructedPhotonsPerPi0->SetBinContent(3,nPi0_twoPhot);
-  hReconstructedPhotonsPerPi0_qualityCuts->SetBinContent(1,nPi0_noPhot_qualityCuts);
-  hReconstructedPhotonsPerPi0_qualityCuts->SetBinContent(2,nPi0_onePhot_qualityCuts);
-  hReconstructedPhotonsPerPi0_qualityCuts->SetBinContent(3,nPi0_twoPhot_qualityCuts);
-  double effi = (double)nPi0_twoPhot_qualityCuts/pi0NPhotons.size();
-  //std::cout << " pi0NPhotons.size() = " << pi0NPhotons.size() << " nPi0_noPhot = " << nPi0_noPhot << " nPi0_onePhot = " << nPi0_onePhot << " nPi0_twoPhot = " << nPi0_twoPhot << " efficiency = " << effi << std::endl;
+  //MAYBE THE BLOCK BELOW IS NOT REALLY NEEDED, AND CAN DO ALL EFFICIENCY IN THE ABOVE PI0 LOOPS! ACTUALLY MAYBE EVERYTHING THAT FOLLOWS CAN BE DONE ABOVE!!! AND MAYBE IT CAN ALL BE DONE IN THE VERY FIRST LOOP?
+  //std::cout << "pi0PhotonMotherPos size = " << pi0PhotonMotherPosInMCParticleVect.size() << std::endl;
+  int nPi0_noPhot_trueQualityCuts= std::count_if(pi0NPhotons_trueQualityCuts.begin(), pi0NPhotons_trueQualityCuts.end(), [](int i){return i == 0;}); 
+  int nPi0_onePhot_trueQualityCuts= std::count_if(pi0NPhotons_trueQualityCuts.begin(), pi0NPhotons_trueQualityCuts.end(), [](int i){return i == 1;}); 
+  int nPi0_twoPhot_trueQualityCuts= std::count_if(pi0NPhotons_trueQualityCuts.begin(), pi0NPhotons_trueQualityCuts.end(), [](int i){return i == 2;}); 
+  int nPi0_noPhot_trueAndRecoQualityCuts = std::count_if(pi0NPhotons_trueAndRecoQualityCuts.begin(), pi0NPhotons_trueAndRecoQualityCuts.end(), [](int i){return i == 0;}); 
+  int nPi0_onePhot_trueAndRecoQualityCuts = std::count_if(pi0NPhotons_trueAndRecoQualityCuts.begin(), pi0NPhotons_trueAndRecoQualityCuts.end(), [](int i){return i == 1;}); 
+  int nPi0_twoPhot_trueAndRecoQualityCuts = std::count_if(pi0NPhotons_trueAndRecoQualityCuts.begin(), pi0NPhotons_trueAndRecoQualityCuts.end(), [](int i){return i == 2;}); 
+
+  if(debugMode)std::cout << "N true pi0s = " << pi0NPhotons_trueQualityCuts.size() << " nr pi0s with zero/one/two photons passing true quality cuts = " << nPi0_noPhot_trueQualityCuts<< " / " << nPi0_onePhot_trueQualityCuts<< " / " << nPi0_twoPhot_trueQualityCuts<< std::endl;
+  if(debugMode)std::cout << "N true pi0s = " << pi0NPhotons_trueQualityCuts.size() << " nr pi0s with zero/one/two photons passing true and reco quality cuts = " << nPi0_noPhot_trueAndRecoQualityCuts << " / " << nPi0_onePhot_trueAndRecoQualityCuts << " / " << nPi0_twoPhot_trueAndRecoQualityCuts << std::endl;
+  //hTruePi0s->SetBinContent(0,pi0NPhotons_trueQualityCuts.size());
+  hTruePhotonsPerPi0_trueQualityCuts->SetBinContent(1,nPi0_noPhot_trueQualityCuts);
+  hTruePhotonsPerPi0_trueQualityCuts->SetBinContent(2,nPi0_onePhot_trueQualityCuts);
+  hTruePhotonsPerPi0_trueQualityCuts->SetBinContent(3,nPi0_twoPhot_trueQualityCuts);
+  hReconstructedPhotonsPerPi0_trueAndRecoQualityCuts->SetBinContent(1,nPi0_noPhot_trueAndRecoQualityCuts);
+  hReconstructedPhotonsPerPi0_trueAndRecoQualityCuts->SetBinContent(2,nPi0_onePhot_trueAndRecoQualityCuts);
+  hReconstructedPhotonsPerPi0_trueAndRecoQualityCuts->SetBinContent(3,nPi0_twoPhot_trueAndRecoQualityCuts);
+  //double effi = (double)nPi0_twoPhot_trueAndRecoQualityCuts/pi0NPhotons_trueQualityCuts.size();
+  double effi = (double)nPi0_twoPhot_trueAndRecoQualityCuts/(double)nPi0_twoPhot_trueQualityCuts;
+  double effiError = TMath::Sqrt(effi*(1-effi)/(double)nPi0_twoPhot_trueQualityCuts);
+  if(debugMode)std::cout << "effi = " << effi << " +- " << effiError << std::endl;
+  //std::cout << " pi0NPhotons_trueQualityCuts.size() = " << pi0NPhotons_trueQualityCuts.size() << " nPi0_noPhot_trueQualityCuts= " << nPi0_noPhot_trueQualityCuts<< " nPi0_onePhot_trueQualityCuts= " << nPi0_onePhot_trueQualityCuts<< " nPi0_twoPhot_trueQualityCuts= " << nPi0_twoPhot_trueQualityCuts<< " efficiency = " << effi << std::endl;
   hEfficiency->SetBinContent(1,effi);
   //Make pi0 mass plots
 
@@ -422,19 +536,18 @@ void test::Pi0AnalysisPlots::beginJob()
   std::vector<double> pi0Daughter2TrueEnergy, pi0Daughter2TrueDirectionX, pi0Daughter2TrueDirectionY, pi0Daughter2TrueDirectionZ;
   
   int nPhotonPairs(0); //for debug
-   //std::cout << " globalEventID = " << globalEventID << " DEBUG pi0PhotonMotherPos.size() = " << pi0PhotonMotherPos.size() << std::endl;
+   //std::cout << " globalEventID = " << globalEventID << " DEBUG pi0PhotonMotherPosInMCParticleVect.size() = " << pi0PhotonMotherPosInMCParticleVect.size() << std::endl;
 
-  for(long unsigned int iPi0Phot=0; iPi0Phot<pi0PhotonMotherPos.size(); iPi0Phot++){
-     //if(pi0PhotonTrueParticleNHitsU.at(iPi0Phot)<0) continue;
+  for(long unsigned int iPi0Phot=0; iPi0Phot<pi0PhotonMotherPosInMCParticleVect.size(); iPi0Phot++){
+     //if(pi0PhotonBestMatchedTrueParticleNHitsU.at(iPi0Phot)<0) continue;
 
      //std::cout << "globalEventNumber = " << pi0PhotonGlobalEventID.at(iPi0Phot) << std::endl;
-    //std::cout << "photon's mother position = " << pi0PhotonMotherPos.at(iPi0Phot) << std::endl;
-    for(long unsigned int jPi0Phot=iPi0Phot+1; jPi0Phot<pi0PhotonMotherPos.size(); jPi0Phot++){
+    //std::cout << "photon's mother position = " << pi0PhotonMotherPosInMCParticleVect.at(iPi0Phot) << std::endl;
+    for(long unsigned int jPi0Phot=iPi0Phot+1; jPi0Phot<pi0PhotonMotherPosInMCParticleVect.size(); jPi0Phot++){
 
-     //if(pi0PhotonTrueParticleNHitsU.at(jPi0Phot)<0) continue;
-     if(pi0PhotonMotherPos.at(iPi0Phot)==pi0PhotonMotherPos.at(jPi0Phot) && pi0PhotonGlobalEventID.at(iPi0Phot)==pi0PhotonGlobalEventID.at(jPi0Phot) && pi0PhotonMatchedPfpShowerPos.at(iPi0Phot)>=0 && pi0PhotonMatchedPfpShowerPos.at(jPi0Phot)>=0){
+     //if(pi0PhotonBestMatchedTrueParticleNHitsU.at(jPi0Phot)<0) continue;
+     if(pi0PhotonMotherPosInMCParticleVect.at(iPi0Phot)==pi0PhotonMotherPosInMCParticleVect.at(jPi0Phot) && pi0PhotonGlobalEventID.at(iPi0Phot)==pi0PhotonGlobalEventID.at(jPi0Phot) && pi0PhotonMatchedPfpShowerPos.at(iPi0Phot)>=0 && pi0PhotonMatchedPfpShowerPos.at(jPi0Phot)>=0){
      
-     if(pi0PhotonShowerCompleteness.at(iPi0Phot)<0.9 || pi0PhotonShowerCompleteness.at(jPi0Phot)<0.9)std::cout << "iPhot = " << iPi0Phot << " jPhot = " << jPi0Phot << " global ev ID = " << pi0PhotonGlobalEventID.at(iPi0Phot) << " pi0PhotonShowerCompleteness.at(iPi0Phot) = " << pi0PhotonShowerCompleteness.at(iPi0Phot) << " pi0PhotonShowerCompleteness.at(jPi0Phot) = " << pi0PhotonShowerCompleteness.at(jPi0Phot) << " phot1 energy = " <<pi0PhotonMatchedPfpShowerCollectionPlaneEnergy.at(iPi0Phot)/1000 << " phot2 energy = " << pi0PhotonMatchedPfpShowerCollectionPlaneEnergy.at(jPi0Phot)/1000 << " true phot1 energy = " << pi0PhotonTrueEnergy.at(iPi0Phot) << " true phot2 energy = " << pi0PhotonTrueEnergy.at(jPi0Phot) << std::endl;
 
      double recoPhot1Energy = pi0PhotonMatchedPfpShowerCollectionPlaneEnergy.at(iPi0Phot)/1000;
      double energyResValuePhot1 = (recoPhot1Energy-pi0PhotonTrueEnergy.at(iPi0Phot))/pi0PhotonTrueEnergy.at(iPi0Phot);
@@ -445,7 +558,8 @@ void test::Pi0AnalysisPlots::beginJob()
      hShowerNHitsVsCompleteness->Fill(pi0PhotonShowerNHits.at(iPi0Phot),pi0PhotonShowerCompleteness.at(iPi0Phot));
      hShowerCompletenessVsEnergyResolution->Fill(pi0PhotonShowerCompleteness.at(iPi0Phot),energyResValuePhot1);
      hShowerPurityVsEnergyResolution->Fill(pi0PhotonShowerPurity.at(iPi0Phot),energyResValuePhot1);
-
+     TVector3 phot1mom(pi0PhotonTrueDirectionX.at(iPi0Phot),pi0PhotonTrueDirectionY.at(iPi0Phot),pi0PhotonTrueDirectionZ.at(iPi0Phot));
+     TVector3 recoPhot1Mom(pi0PhotonMatchedPfpShowerDirectionX.at(iPi0Phot),pi0PhotonMatchedPfpShowerDirectionY.at(iPi0Phot),pi0PhotonMatchedPfpShowerDirectionZ.at(iPi0Phot));
 
      double recoPhot2Energy = pi0PhotonMatchedPfpShowerCollectionPlaneEnergy.at(jPi0Phot)/1000;
      double energyResValuePhot2 = (recoPhot2Energy-pi0PhotonTrueEnergy.at(jPi0Phot))/pi0PhotonTrueEnergy.at(jPi0Phot);
@@ -458,27 +572,18 @@ void test::Pi0AnalysisPlots::beginJob()
      hShowerPurityVsEnergyResolution->Fill(pi0PhotonShowerPurity.at(jPi0Phot),energyResValuePhot2);
      hEnergyResolution->Fill(energyResValuePhot1);
      hEnergyResolution->Fill(energyResValuePhot2);
+     TVector3 phot2mom(pi0PhotonTrueDirectionX.at(jPi0Phot),pi0PhotonTrueDirectionY.at(jPi0Phot),pi0PhotonTrueDirectionZ.at(jPi0Phot));
+     TVector3 recoPhot2Mom(pi0PhotonMatchedPfpShowerDirectionX.at(jPi0Phot),pi0PhotonMatchedPfpShowerDirectionY.at(jPi0Phot),pi0PhotonMatchedPfpShowerDirectionZ.at(jPi0Phot));
 
-
-     if(!PassesPhotonQualityCuts(pi0PhotonTrueParticleNHitsU.at(iPi0Phot),pi0PhotonTrueParticleNHitsV.at(iPi0Phot),pi0PhotonTrueParticleNHitsW.at(iPi0Phot), pi0PhotonTrueEnergy.at(iPi0Phot),pi0PhotonShowerPurity.at(iPi0Phot),pi0PhotonShowerCompleteness.at(iPi0Phot))) continue;
-      if(!PassesPhotonQualityCuts(pi0PhotonTrueParticleNHitsU.at(jPi0Phot),pi0PhotonTrueParticleNHitsV.at(jPi0Phot),pi0PhotonTrueParticleNHitsW.at(jPi0Phot),pi0PhotonTrueEnergy.at(jPi0Phot),pi0PhotonShowerPurity.at(jPi0Phot),pi0PhotonShowerCompleteness.at(jPi0Phot))) continue;
-     //if(iPi0Phot==118)std::cout << "iPi0Phot = "  << iPi0Phot << " pi0PhotonTrueParticleNHitsU " << pi0PhotonTrueParticleNHitsU.at(iPi0Phot) << " pi0PhotonTrueParticleNHitsV " << pi0PhotonTrueParticleNHitsV.at(iPi0Phot) << " pi0PhotonTrueParticleNHitsW " << pi0PhotonTrueParticleNHitsW.at(iPi0Phot) << " pi0PhotonTrueEnergy " << pi0PhotonTrueEnergy.at(iPi0Phot) << " pi0PhotonShowerPurity " << pi0PhotonShowerPurity.at(iPi0Phot) << " pi0PhotonShowerCompleteness " << pi0PhotonShowerCompleteness.at(iPi0Phot) << " passes element cuts = " << PassesPhotonQualityCuts(pi0PhotonTrueParticleNHitsU.at(iPi0Phot),pi0PhotonTrueParticleNHitsV.at(iPi0Phot),pi0PhotonTrueParticleNHitsW.at(iPi0Phot), pi0PhotonTrueEnergy.at(iPi0Phot),pi0PhotonShowerPurity.at(iPi0Phot),pi0PhotonShowerCompleteness.at(iPi0Phot)) << std::endl;
-    // if(jPi0Phot==119)std::cout << "jPi0Phot = "  << jPi0Phot << " pi0PhotonTrueParticleNHitsU " << pi0PhotonTrueParticleNHitsU.at(jPi0Phot) << " pi0PhotonTrueParticleNHitsV " << pi0PhotonTrueParticleNHitsV.at(jPi0Phot) << " pi0PhotonTrueParticleNHitsW " << pi0PhotonTrueParticleNHitsW.at(jPi0Phot) << " pi0PhotonTrueEnergy " << pi0PhotonTrueEnergy.at(jPi0Phot) << " pi0PhotonShowerPurity " << pi0PhotonShowerPurity.at(jPi0Phot) << " pi0PhotonShowerCompleteness " << pi0PhotonShowerCompleteness.at(jPi0Phot) << " passes element cuts = " << PassesPhotonQualityCuts(pi0PhotonTrueParticleNHitsU.at(jPi0Phot),pi0PhotonTrueParticleNHitsV.at(jPi0Phot),pi0PhotonTrueParticleNHitsW.at(jPi0Phot),pi0PhotonTrueEnergy.at(jPi0Phot),pi0PhotonShowerPurity.at(jPi0Phot),pi0PhotonShowerCompleteness.at(jPi0Phot)) << std::endl;
+     if(!PassesTruePhotonQualityCuts(pi0PhotonTrueNHitsU.at(iPi0Phot),pi0PhotonTrueNHitsV.at(iPi0Phot),pi0PhotonTrueNHitsW.at(iPi0Phot), pi0PhotonTrueEnergy.at(iPi0Phot),pi0PhotonTrueVertexX.at(iPi0Phot),pi0PhotonTrueVertexY.at(iPi0Phot),pi0PhotonTrueVertexZ.at(iPi0Phot)) || !PassesRecoShowerQualityCuts(pi0PhotonShowerPurity.at(iPi0Phot),pi0PhotonShowerCompleteness.at(iPi0Phot))) continue;
+     if(!PassesTruePhotonQualityCuts(pi0PhotonTrueNHitsU.at(jPi0Phot),pi0PhotonTrueNHitsV.at(jPi0Phot),pi0PhotonTrueNHitsW.at(jPi0Phot),pi0PhotonTrueEnergy.at(jPi0Phot),pi0PhotonTrueVertexX.at(jPi0Phot),pi0PhotonTrueVertexY.at(jPi0Phot),pi0PhotonTrueVertexZ.at(jPi0Phot)) || !PassesRecoShowerQualityCuts(pi0PhotonShowerPurity.at(jPi0Phot),pi0PhotonShowerCompleteness.at(jPi0Phot))) continue;
         nPhotonPairs++;
-        //hNTruePi0s_twoRecoPhotons->Fill(1);
-        //std::cout << "PASSED CUTS! i= " << iPi0Phot << " j= " << jPi0Phot << " pi0PhotonGlobalEventID = " << pi0PhotonGlobalEventID.at(jPi0Phot) << " pi0PhotonTrueParticleNHitsU.at(iPi0Phot) = " << pi0PhotonTrueParticleNHitsU.at(iPi0Phot) << " pi0PhotonTrueParticleNHitsU.at(jPi0Phot) = " << pi0PhotonTrueParticleNHitsU.at(jPi0Phot) << std::endl;
-        //std::cout << "i= " << iPi0Phot << " j= " << jPi0Phot << " pi position = " << pi0PhotonMotherPos.at(iPi0Phot) << std::endl;
-        TVector3 phot1mom(pi0PhotonTrueDirectionX.at(iPi0Phot),pi0PhotonTrueDirectionY.at(iPi0Phot),pi0PhotonTrueDirectionZ.at(iPi0Phot));
-           //std::cout << "debA" << std::endl;
-        TVector3 phot2mom(pi0PhotonTrueDirectionX.at(jPi0Phot),pi0PhotonTrueDirectionY.at(jPi0Phot),pi0PhotonTrueDirectionZ.at(jPi0Phot));
-           //std::cout << "debB" << std::endl;
+
         double angle = phot1mom.Angle(phot2mom);
         double angleDeg = angle/TMath::Pi()*180;
         double invMass = TMath::Sqrt(2*pi0PhotonTrueEnergy.at(iPi0Phot)*pi0PhotonTrueEnergy.at(jPi0Phot)*(1-TMath::Cos(angle))); 
            //std::cout << "debC" << std::endl;
-        TVector3 recoPhot1Mom(pi0PhotonMatchedPfpShowerDirectionX.at(iPi0Phot),pi0PhotonMatchedPfpShowerDirectionY.at(iPi0Phot),pi0PhotonMatchedPfpShowerDirectionZ.at(iPi0Phot));
            //std::cout << "debD" << std::endl;
-        TVector3 recoPhot2Mom(pi0PhotonMatchedPfpShowerDirectionX.at(jPi0Phot),pi0PhotonMatchedPfpShowerDirectionY.at(jPi0Phot),pi0PhotonMatchedPfpShowerDirectionZ.at(jPi0Phot));
            //std::cout << "debE" << std::endl;
         if(pi0PhotonMatchedPfpShowerCollectionPlaneEnergy.at(iPi0Phot)<0 || pi0PhotonMatchedPfpShowerCollectionPlaneEnergy.at(jPi0Phot)<0) continue;
            //std::cout << "debF" << std::endl;
@@ -497,6 +602,9 @@ void test::Pi0AnalysisPlots::beginJob()
         //std::cout << "reco phot 2 matchedID E mom: " << pi0PhotonMatchedPfpShowerMatchedTrackID.at(jPi0Phot) << " " << recoPhot2Energy << " " << pi0PhotonMatchedPfpShowerDirectionX.at(jPi0Phot) << " " << pi0PhotonMatchedPfpShowerDirectionY.at(jPi0Phot) << " " << pi0PhotonMatchedPfpShowerDirectionZ.at(jPi0Phot) <<" completeness = " << pi0PhotonShowerCompleteness.at(jPi0Phot) << " purity = " << pi0PhotonShowerPurity.at(jPi0Phot) << std::endl;
         //std::cout << "global ev ID = " << pi0PhotonGlobalEventID.at(iPi0Phot) << " " << pi0PhotonGlobalEventID.at(jPi0Phot) << " reco angle = " << recoAngle << " reco inv mass = " << recoInvMass << std::endl;
         //Fill plots
+        //if(recoInvMass>0.2) std::cout << "inv Mass = " << recoInvMass << " globalEventID = " << pi0PhotonGlobalEventID.at(iPi0Phot) << std::endl;
+        //std::cout << "inv Mass = " << recoInvMass << " globalEventID = " << pi0PhotonGlobalEventID.at(iPi0Phot) << std::endl;
+
         hTruePi0InvMass->Fill(invMass);
         hRecoPi0InvMass->Fill(recoInvMass);
         hRecoPi0InvMass_trueEnergy->Fill(recoInvMassTrueEnergy);
@@ -522,6 +630,55 @@ void test::Pi0AnalysisPlots::beginJob()
   }
   //hNTruePi0s_twoRecoPhotons->Fill(1);
   //std::cout << "nPhotonPairs = " << nPhotonPairs << std::endl;
+  //
+  //
+  //MAKE PI0 EFFICIENCY PLOTS
+  int nBinsAngle=hPi0TruePhotonsOpeningAngleVsNTruePhotonsPassingTrueQualityCuts->GetNbinsX();
+  int nBinsEnergy=hPi0TruePhotonsMinimumEnergyVsNTruePhotonsPassingTrueQualityCuts->GetNbinsX();
+  int nBinsPurity=hPi0TruePhotonsMinimumPurityVsNTruePhotonsPassingTrueQualityCuts->GetNbinsX();
+  int nBinsCompleteness=hPi0TruePhotonsMinimumCompletenessVsNTruePhotonsPassingTrueQualityCuts->GetNbinsX();
+  double angleEffi(0), energyEffi(0), angleEffiError(0), energyEffiError(0), purityEffi(0), purityEffiError(0), completenessEffi(0), completenessEffiError(0);
+  for(int iBin=0; iBin<nBinsAngle; iBin++){
+    if(hPi0TruePhotonsOpeningAngleVsNTruePhotonsPassingTrueQualityCuts->Integral(iBin,nBinsAngle,3,3)){
+      angleEffi=hPi0TruePhotonsOpeningAngleVsNTruePhotonsPassingTrueAndRecoQualityCuts->Integral(iBin,nBinsAngle,3,3)/hPi0TruePhotonsOpeningAngleVsNTruePhotonsPassingTrueQualityCuts->Integral(iBin,nBinsAngle,3,3);
+      angleEffiError=TMath::Sqrt(angleEffi*(1-angleEffi)/hPi0TruePhotonsOpeningAngleVsNTruePhotonsPassingTrueQualityCuts->Integral(iBin,nBinsAngle,3,3));
+    }
+    else {angleEffi=0;angleEffiError=0;}
+    //std::cout << " angle effi for bin = " << iBin << " = " << angleEffi << " num = " << hPi0TruePhotonsOpeningAngleVsNTruePhotonsPassingTrueAndRecoQualityCuts->Integral(iBin,nBinsAngle,3,3) << " den = " << hPi0TruePhotonsOpeningAngleVsNTruePhotonsPassingTrueQualityCuts->Integral(iBin,nBinsAngle,3,3) << std::endl;
+    hPi0TruePhotonsOpeningAngleEffi->SetBinContent(iBin,angleEffi);
+    hPi0TruePhotonsOpeningAngleEffi->SetBinError(iBin,angleEffiError);
+  }
+  for(int iBin=0; iBin<nBinsEnergy; iBin++){
+    if(hPi0TruePhotonsMinimumEnergyVsNTruePhotonsPassingTrueQualityCuts->Integral(iBin,nBinsEnergy,3,3)){
+      energyEffi=hPi0TruePhotonsMinimumEnergyVsNTruePhotonsPassingTrueAndRecoQualityCuts->Integral(iBin,nBinsEnergy,3,3)/hPi0TruePhotonsMinimumEnergyVsNTruePhotonsPassingTrueQualityCuts->Integral(iBin,nBinsEnergy,3,3);
+      energyEffiError=TMath::Sqrt(energyEffi*(1-energyEffi)/hPi0TruePhotonsMinimumEnergyVsNTruePhotonsPassingTrueQualityCuts->Integral(iBin,nBinsEnergy,3,3));
+    }
+    else {energyEffi=0;energyEffiError=0;}
+    //std::cout << " energy effi for bin = " << iBin << " = " << energyEffi << std::endl;
+    hPi0TruePhotonsMinimumEnergyEffi->SetBinContent(iBin,energyEffi);
+    hPi0TruePhotonsMinimumEnergyEffi->SetBinError(iBin,energyEffiError);
+  } 
+  for(int iBin=0; iBin<nBinsPurity; iBin++){
+    if(hPi0TruePhotonsMinimumPurityVsNTruePhotonsPassingTrueQualityCuts->Integral(iBin,nBinsPurity,3,3)){
+      purityEffi=hPi0TruePhotonsMinimumPurityVsNTruePhotonsPassingTrueAndRecoQualityCuts->Integral(iBin,nBinsPurity,3,3)/hPi0TruePhotonsMinimumPurityVsNTruePhotonsPassingTrueQualityCuts->Integral(iBin,nBinsPurity,3,3);
+      purityEffiError=TMath::Sqrt(purityEffi*(1-purityEffi)/hPi0TruePhotonsMinimumPurityVsNTruePhotonsPassingTrueQualityCuts->Integral(iBin,nBinsPurity,3,3));
+    }
+    else {purityEffi=0;purityEffiError=0;}
+    //std::cout << " energy effi for bin = " << iBin << " = " << energyEffi << std::endl;
+    hPi0TruePhotonsMinimumPurityEffi->SetBinContent(iBin,purityEffi);
+    hPi0TruePhotonsMinimumPurityEffi->SetBinError(iBin,purityEffiError);
+  } 
+  for(int iBin=0; iBin<nBinsCompleteness; iBin++){
+    if(hPi0TruePhotonsMinimumCompletenessVsNTruePhotonsPassingTrueQualityCuts->Integral(iBin,nBinsCompleteness,3,3)){
+      completenessEffi=hPi0TruePhotonsMinimumCompletenessVsNTruePhotonsPassingTrueAndRecoQualityCuts->Integral(iBin,nBinsCompleteness,3,3)/hPi0TruePhotonsMinimumCompletenessVsNTruePhotonsPassingTrueQualityCuts->Integral(iBin,nBinsCompleteness,3,3);
+      completenessEffiError=TMath::Sqrt(completenessEffi*(1-completenessEffi)/hPi0TruePhotonsMinimumCompletenessVsNTruePhotonsPassingTrueQualityCuts->Integral(iBin,nBinsCompleteness,3,3));
+    }
+    else {completenessEffi=0;completenessEffiError=0;}
+    //std::cout << " energy effi for bin = " << iBin << " = " << energyEffi << std::endl;
+    hPi0TruePhotonsMinimumCompletenessEffi->SetBinContent(iBin,completenessEffi);
+    hPi0TruePhotonsMinimumCompletenessEffi->SetBinError(iBin,completenessEffiError);
+  } 
+
 }
 
 void test::Pi0AnalysisPlots::endJob()
@@ -529,13 +686,32 @@ void test::Pi0AnalysisPlots::endJob()
   // Implementation of optional member function here.
 }
 
-bool test::Pi0AnalysisPlots::PassesPhotonQualityCuts(int nHitsU, int nHitsV, int nHitsW, double energy, double purity, double completeness)
+bool test::Pi0AnalysisPlots::PassesTruePhotonQualityCuts(int nTrueHitsU, int nTrueHitsV, int nTrueHitsW, double trueEnergy, double trueVertexX, double trueVertexY, double trueVertexZ)
 {
-  if(nHitsU+nHitsV+nHitsW<15) return false;
-  if((nHitsU<5 && nHitsV<5) || (nHitsU<5 && nHitsW<5) || (nHitsV<5 && nHitsW<5)) return false;
-  if(energy<0.1) return false; //100 MeV cut
+  if(nTrueHitsU+nTrueHitsV+nTrueHitsW<15) return false;
+  if((nTrueHitsU<5 && nTrueHitsV<5) || (nTrueHitsU<5 && nTrueHitsW<5) || (nTrueHitsV<5 && nTrueHitsW<5)) return false;
+  //if(!PassesTrueFiducialVolumeQualityCuts(trueVertexX,trueVertexY,trueVertexZ)) return false;
+  //if(trueEnergy<0.1) return false; //100 MeV cut
+  return true;
+}
+
+bool test::Pi0AnalysisPlots::PassesRecoShowerQualityCuts(double purity, double completeness)
+{
+  std::cout << "purity = " << purity << " completeness = " << completeness << std::endl;
   if(purity<0.5) return false;
   if(completeness<0.5) return false;
+  return true;
+}
+
+bool test::Pi0AnalysisPlots::PassesTrueFiducialVolumeQualityCuts(double trueVertexX, double trueVertexY, double trueVertexZ)
+{
+  /*std::cout << "trueVertexX = " << trueVertexX << " trueVertexY = " << trueVertexY << " trueVertexZ = " << trueVertexZ << std::endl;
+  std::cout << "lowBoundaryX = " << lowBoundaryX << " highBoundaryX = " << highBoundaryX << " xTolerance = " << xTolerance << std::endl;
+  std::cout << "lowBoundaryY = " << lowBoundaryY << " highBoundaryY = " << highBoundaryY << " yTolerance = " << yTolerance << std::endl;
+  std::cout << "lowBoundaryZ = " << lowBoundaryZ << " highBoundaryZ = " << highBoundaryZ << " zTolerance = " << zTolerance << std::endl;*/
+  if(trueVertexX>highBoundaryX-xTolerance || trueVertexX<lowBoundaryX+xTolerance) return false;
+  if(trueVertexY>highBoundaryY-yTolerance || trueVertexY<lowBoundaryY+yTolerance) return false;
+  if(trueVertexZ>highBoundaryZ-zTolerance || trueVertexZ<lowBoundaryZ+zTolerance) return false;
   return true;
 }
 
